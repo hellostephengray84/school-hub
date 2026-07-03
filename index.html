@@ -220,8 +220,10 @@
       const DAY_ABBR = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
       const blue     = "#1D4ED8", blueL = "#EFF6FF", blueMid = "#DBEAFE";
 
-      // Day strip scroll handler
-      const weekDays = Array.from({length:21}, (_,i) => {
+      // Day strip: extend from today to cover the last event date + a week buffer
+      const lastEventDate = events.reduce((max, e) => e.date > max ? e.date : max, todayStr);
+      const dayCount = Math.max(30, Math.ceil((new Date(lastEventDate + "T00:00:00") - new Date(todayStr + "T00:00:00")) / 86400000) + 8);
+      const weekDays = Array.from({length: dayCount}, (_, i) => {
         const d = new Date(); d.setHours(0,0,0,0);
         d.setDate(d.getDate() + i);
         return d.toISOString().split("T")[0];
@@ -232,21 +234,26 @@
         const el = e.currentTarget;
         rafRef.current = requestAnimationFrame(() => {
           rafRef.current = null;
+
+          // Update scroll progress bar
           const max = el.scrollWidth - el.clientWidth;
           const pct = max > 0 ? el.scrollLeft / max : 0;
           if (scrollThumbRef.current) scrollThumbRef.current.style.left = `${pct * 70}%`;
+
+          // Find the leftmost visible day card: sort all cards by screen position,
+          // pick the first whose left edge has reached or passed the container's left edge.
+          // Works correctly in both scroll directions.
           const containerLeft = el.getBoundingClientRect().left;
-          let leadingDate = null, leadingLeft = -Infinity;
-          for (const [dateStr, node] of Object.entries(dayRefs.current)) {
-            if (!node) continue;
-            const nodeLeft = node.getBoundingClientRect().left;
-            if (nodeLeft <= containerLeft + 1 && nodeLeft > leadingLeft) {
-              leadingLeft = nodeLeft; leadingDate = dateStr;
-            }
-          }
-          if (!leadingDate && weekDays.length) leadingDate = weekDays[0];
-          if (leadingDate) {
-            const d = new Date(leadingDate + "T12:00:00");
+          const positioned = Object.entries(dayRefs.current)
+            .filter(([, node]) => node)
+            .map(([dateStr, node]) => ({ dateStr, left: node.getBoundingClientRect().left }))
+            .sort((a, b) => a.left - b.left);
+
+          // First card at or past the container edge = leftmost visible card
+          const firstVisible = positioned.find(n => n.left >= containerLeft - 1) || positioned[0];
+
+          if (firstVisible) {
+            const d = new Date(firstVisible.dateStr + "T12:00:00");
             const label = d.toLocaleDateString("en-GB", { month:"long", year:"numeric" });
             setVisibleMonth(prev => prev === label ? prev : label);
           }
