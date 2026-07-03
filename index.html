@@ -359,7 +359,39 @@
 
             <div style={{padding:"22px 24px 14px"}}>
               <div style={{fontSize:11,fontWeight:700,opacity:.6,letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>Coming up</div>
-              <div style={{fontSize:20,fontWeight:900,letterSpacing:-.5}}>{monthLabel}</div>
+              <select
+                value={monthLabel}
+                onChange={e => {
+                  // Find the first day card belonging to the selected month and scroll to it
+                  const target = weekDays.find(dateStr => {
+                    const d = new Date(dateStr + "T12:00:00");
+                    return d.toLocaleDateString("en-GB", { month:"long", year:"numeric" }) === e.target.value;
+                  });
+                  if (target && dayRefs.current[target] && dayStripRef.current) {
+                    const node = dayRefs.current[target];
+                    const container = dayStripRef.current;
+                    const nodeLeft = node.offsetLeft;
+                    container.scrollTo({ left: nodeLeft - 16, behavior:"smooth" });
+                  }
+                }}
+                style={{
+                  fontSize:20, fontWeight:900, letterSpacing:-.5,
+                  background:"transparent", border:"none", color:"#fff",
+                  appearance:"none", WebkitAppearance:"none",
+                  cursor:"pointer", padding:"0 24px 0 0",
+                  backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E")`,
+                  backgroundRepeat:"no-repeat",
+                  backgroundPosition:"right 4px center",
+                  width:"auto", maxWidth:"100%",
+                }}>
+                {/* Build unique month options from weekDays */}
+                {[...new Set(weekDays.map(dateStr => {
+                  const d = new Date(dateStr + "T12:00:00");
+                  return d.toLocaleDateString("en-GB", { month:"long", year:"numeric" });
+                }))].map(label => (
+                  <option key={label} value={label} style={{color:"#0F172A",background:"#fff",fontWeight:600}}>{label}</option>
+                ))}
+              </select>
             </div>
 
             {/* Day strip */}
