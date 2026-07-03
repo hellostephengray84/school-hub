@@ -208,7 +208,7 @@
       const [visibleMonth, setVisibleMonth] = useState(null);
 
       // Flyer parser state
-      const [flyerUrl,     setFlyerUrl]     = useState("https://www.allsaints.lewisham.sch.uk/docs/Friday_Flyers/2025-2026/");
+      const [flyerFile,    setFlyerFile]    = useState(null);
       const [flyerLoading, setFlyerLoading] = useState(false);
       const [flyerResult,  setFlyerResult]  = useState(null);
 
@@ -290,10 +290,17 @@
       }
 
       async function parseFlyer() {
-        if (!flyerUrl.trim()) return;
-        if (!apiKey.trim()) { setFlyerResult({error:"Please enter your Anthropic API key above to use the flyer parser."}); return; }
+        if (!flyerFile) return;
+        if (!apiKey.trim()) { setFlyerResult({error:"Please enter your Anthropic API key above."}); return; }
         setFlyerLoading(true); setFlyerResult(null);
         try {
+          // Read PDF as base64
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(",")[1]);
+            reader.onerror = () => reject(new Error("Could not read file"));
+            reader.readAsDataURL(flyerFile);
+          });
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method:"POST",
             headers:{
@@ -303,8 +310,11 @@
               "anthropic-dangerous-direct-browser-access": "true",
             },
             body: JSON.stringify({
-              model:"claude-sonnet-4-6", max_tokens:1000,
-              messages:[{ role:"user", content:`You are helping a Year 1 parent at All Saints' Blackheath primary school extract events from a Friday Flyer PDF at this URL: ${flyerUrl}\n\nExtract all dates and events. Return ONLY valid JSON, no markdown:\n{"flyerDate":"string","summary":"string","events":[{"title":"string","date":"YYYY-MM-DD or null","type":"assembly|trip|event|inset|dress-up|term|action|social|homework","yearGroups":["all|year1|year2|year3|year4|year5|year6|reception"],"detail":"string"}]}` }]
+              model:"claude-sonnet-4-6", max_tokens:1500,
+              messages:[{ role:"user", content:[
+                { type:"document", source:{ type:"base64", media_type:"application/pdf", data:base64 } },
+                { type:"text", text:`You are helping a parent at All Saints' C of E Primary School Blackheath extract events from this Friday Flyer PDF.\n\nExtract ALL dates, events, deadlines, term dates, INSET days and reminders. Return ONLY valid JSON with no markdown:\n{"flyerDate":"string","summary":"string","events":[{"title":"string","date":"YYYY-MM-DD or null","type":"assembly|trip|event|inset|dress-up|term|action|social|homework","yearGroups":["all|year1|year2|year3|year4|year5|year6|reception"],"detail":"string"}]}` }
+              ]}]
             })
           });
           const data = await res.json();
@@ -312,7 +322,7 @@
           const text = data.content?.find(b => b.type==="text")?.text || "";
           setFlyerResult(JSON.parse(text.replace(/```json|```/g,"").trim()));
         } catch(e) {
-          setFlyerResult({error:"Could not parse: " + (e.message || "Check the URL is a direct PDF link and your API key is correct.")});
+          setFlyerResult({error:"Could not parse: " + (e.message || "Check your API key and try again.")});
         }
         setFlyerLoading(false);
       }
@@ -509,11 +519,11 @@
 
           {/* ── MODAL: Load Flyer ── */}
           {showFlyer && (
-            <Modal onClose={()=>{setShowFlyer(false);setFlyerResult(null);}}>
+            <Modal onClose={()=>{setShowFlyer(false);setFlyerResult(null);setFlyerFile(null);}}>
               <div style={{padding:22}}>
-                <ModalTitle onClose={()=>{setShowFlyer(false);setFlyerResult(null);}}>📄 Load Friday Flyer</ModalTitle>
+                <ModalTitle onClose={()=>{setShowFlyer(false);setFlyerResult(null);setFlyerFile(null);}}>📄 Load Friday Flyer</ModalTitle>
                 <p style={{fontSize:13,color:"#64748B",marginBottom:14,lineHeight:1.55}}>
-                  Paste the direct PDF URL shared each Friday. Claude will extract all events and replace any from the previous flyer.
+                  Save the Friday Flyer PDF to your Files app, then select it here. Claude will read it and extract all events.
                 </p>
 
                 <Label>Anthropic API Key</Label>
@@ -525,15 +535,30 @@
                   style={inputStyle}/>
                 <div style={{fontSize:11,color:"#94A3B8",marginTop:4,marginBottom:2}}>Saved in your browser only — never in the code.</div>
 
-                <Label>Flyer PDF URL</Label>
-                <div style={{fontSize:11,color:"#94A3B8",marginBottom:6,fontFamily:"monospace"}}>e.g. …/Friday_Flyers/2025-2026/19th_June_2026.pdf</div>
-                <input value={flyerUrl} onChange={e=>setFlyerUrl(e.target.value)}
-                  placeholder="https://www.allsaints.lewisham.sch.uk/docs/..." style={inputStyle}/>
+                <Label>Friday Flyer PDF</Label>
+                <label style={{
+                  display:"flex", alignItems:"center", gap:10,
+                  border:"1px solid #E2E8F0", borderRadius:8, padding:"10px 12px",
+                  background:"#F8FAFC", cursor:"pointer", marginTop:2,
+                }}>
+                  <span style={{fontSize:20}}>📎</span>
+                  <span style={{fontSize:13, color: flyerFile ? "#0F172A" : "#94A3B8", flex:1}}>
+                    {flyerFile ? flyerFile.name : "Tap to choose PDF from Files…"}
+                  </span>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    style={{display:"none"}}
+                    onChange={e => { setFlyerFile(e.target.files[0] || null); setFlyerResult(null); }}
+                  />
+                </label>
 
-                <button onClick={parseFlyer} disabled={flyerLoading} style={{
+                <button onClick={parseFlyer} disabled={flyerLoading || !flyerFile} style={{
                   width:"100%",background:blue,color:"#fff",border:"none",borderRadius:12,
                   padding:13,fontSize:14,fontWeight:700,
-                  cursor:flyerLoading?"wait":"pointer",marginTop:12,marginBottom:12
+                  cursor:(flyerLoading||!flyerFile)?"default":"pointer",
+                  opacity:(flyerLoading||!flyerFile)?0.5:1,
+                  marginTop:12,marginBottom:12
                 }}>{flyerLoading ? "⏳ Extracting…" : "Extract Events"}</button>
 
                 {flyerResult?.error && (
