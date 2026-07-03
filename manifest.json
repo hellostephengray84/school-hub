@@ -1,0 +1,11 @@
+{
+  "name": "School Hub — All Saints' Blackheath",
+  "short_name": "School Hub",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#1E3A8A",
+  "theme_color": "#1E3A8A",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
