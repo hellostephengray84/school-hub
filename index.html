@@ -388,9 +388,13 @@
 
             <div style={{padding:"20px 24px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{fontSize:34,fontWeight:900,letterSpacing:-1.2,lineHeight:1}}>School Hub</div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <button
+                onClick={()=>window.location.reload()}
+                title="Refresh"
+                style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,opacity:.85}}
+              >
                 <ASBLogo size={26}/>
-              </div>
+              </button>
             </div>
 
             <div style={{padding:"22px 24px 14px"}}>
