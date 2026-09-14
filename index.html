@@ -78,6 +78,7 @@
       action:     { label:"Action / Reminder", icon:"⚠️", color:"#EA580C" },
       social:     { label:"Social",            icon:"🎉", color:"#DB2777" },
       homework:   { label:"Homework",          icon:"📚", color:"#6366F1" },
+      pe:         { label:"PE Day",           icon:"🤸", color:"#0891B2" },
       custom:     { label:"Custom",            icon:"✏️", color:"#64748B" },
     };
 
@@ -200,6 +201,14 @@
       const [showFlyer,  setShowFlyer]  = useState(false);
       const [selected,   setSelected]   = useState(null);
       const [calSuccess, setCalSuccess] = useState(null);
+      const [activeTab,  setActiveTab]  = useState("events"); // "events" | "clubs"
+
+      // PE days: stored as array of JS day numbers (0=Sun,1=Mon…6=Sat)
+      const [peDays,  setPeDays]  = useState(() => {
+        try { const s = localStorage.getItem("schoolhub_pedays"); return s ? JSON.parse(s) : [2,3]; } catch { return [2,3]; }
+      });
+      useEffect(() => { try { localStorage.setItem("schoolhub_pedays", JSON.stringify(peDays)); } catch {} }, [peDays]);
+      const [showPE, setShowPE] = useState(false);
 
       const dayStripRef    = useRef(null);
       const scrollThumbRef = useRef(null);
@@ -267,11 +276,38 @@
         events.filter(e => e.date === dateStr &&
           (filterYear === "all" || e.yearGroups.includes(filterYear) || e.yearGroups.includes("all")));
 
+      // Generate recurring PE events — skips INSET days
+      const insetDates = new Set(events.filter(e => e.type==="inset").map(e => e.date));
+      const peEvents = (() => {
+        const out = [];
+        const d = new Date(); d.setHours(0,0,0,0);
+        const end = new Date(); end.setDate(end.getDate() + 140);
+        while (d <= end) {
+          const dow = d.getDay();
+          const dateStr = d.toISOString().split("T")[0];
+          if (peDays.includes(dow) && !insetDates.has(dateStr)) {
+            out.push({
+              id:"pe_"+dateStr, date:dateStr, title:"PE Day — Bring kit",
+              type:"pe", yearGroups:["year1"],
+              detail:"Your child needs their PE kit today. Named kit should be in their bag before school.",
+              source:"pe", urgent:false,
+            });
+          }
+          d.setDate(d.getDate() + 1);
+        }
+        return out;
+      })();
+      const allEvents = [...events, ...peEvents];
+
       const sorted   = arr => [...arr].sort((a,b) => a.date.localeCompare(b.date));
-      const filtered = sorted(events)
+      const filtered = sorted(allEvents)
         .filter(e => daysUntil(e.date) >= 0)
         .filter(e => filterType === "all" || e.type === filterType)
         .filter(e => filterYear === "all" || e.yearGroups.includes(filterYear) || e.yearGroups.includes("all"));
+
+      const eventsOnDay = (dateStr) =>
+        allEvents.filter(e => e.date === dateStr &&
+          (filterYear === "all" || e.yearGroups.includes(filterYear) || e.yearGroups.includes("all")));
 
       function addToCalendar(ev) {
         const fmt   = d => d.toISOString().replace(/[-:.]/g,"").slice(0,15)+"Z";
@@ -427,15 +463,24 @@
                     }}>
                     <div style={{fontSize:9,fontWeight:700,letterSpacing:.8,textTransform:"uppercase",color:"#fff",opacity:isToday?.9:.5,marginBottom:8}}>{dayName}</div>
                     <div style={{fontSize:29,fontWeight:900,lineHeight:1,color:"#fff",opacity:isToday?1:.8}}>{dayNum}</div>
-                    <div style={{marginTop:9,minHeight:18,display:"flex",justifyContent:"center"}}>
-                      {hasEvs && (
+                    <div style={{marginTop:9,minHeight:18,display:"flex",justifyContent:"center",gap:3,alignItems:"center"}}>
+                      {evs.filter(e=>e.type!=="pe").length > 0 && (
                         <div style={{
                           width:18,height:18,borderRadius:"50%",
                           background:"#fff",color:blue,
                           fontSize:10,fontWeight:800,
                           display:"flex",alignItems:"center",justifyContent:"center",
                           boxShadow:"0 1px 4px rgba(0,0,0,0.25)"
-                        }}>{evs.length}</div>
+                        }}>{evs.filter(e=>e.type!=="pe").length}</div>
+                      )}
+                      {evs.some(e=>e.type==="pe") && (
+                        <div style={{
+                          width:18,height:18,borderRadius:"50%",
+                          background:"#0891B2",
+                          fontSize:9,fontWeight:900,color:"#fff",
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          boxShadow:"0 1px 4px rgba(0,0,0,0.25)",flexShrink:0,
+                        }}>PE</div>
                       )}
                     </div>
                     {isToday && (
@@ -463,7 +508,8 @@
           {/* ── ACTION BAR ── */}
           <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"10px 16px",display:"flex",gap:8}}>
             <button onClick={()=>setShowFlyer(true)} style={{flex:1,background:blueL,color:blue,border:`1px solid ${blueMid}`,borderRadius:8,padding:"8px 6px",fontSize:12,fontWeight:600,cursor:"pointer"}}>📄 Load Flyer</button>
-            <button onClick={()=>setShowAdd(true)}   style={{flex:1,background:blue,color:"#fff",border:"none",borderRadius:8,padding:"8px 6px",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Add Event</button>
+            <button onClick={()=>setShowPE(true)}    style={{flex:1,background:"#ECFEFF",color:"#0891B2",border:"1px solid #A5F3FC",borderRadius:8,padding:"8px 6px",fontSize:12,fontWeight:600,cursor:"pointer"}}>🤸 PE Days</button>
+            <button onClick={()=>setShowAdd(true)}   style={{flex:1,background:blue,color:"#fff",border:"none",borderRadius:8,padding:"8px 6px",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Add</button>
           </div>
 
           {/* ── FILTERS ── */}
@@ -509,6 +555,13 @@
                     <Badge type={ev.type} small/>
                     {ev.yearGroups?.filter(g=>g!=="all").map(g=><YearBadge key={g} group={g}/>)}
                     <SourcePill source={ev.source}/>
+                    {ev.type==="pe" && (
+                      <span
+                        onClick={e=>{e.stopPropagation();window.open("https://enrolmy.com/progressive-sports-se-london-and-kent/activity/65-All_Saints_Primary_Autumn_Term_After_School_Club?emyatb=4w7ygdi444","_blank");}}
+                        style={{fontSize:11,fontWeight:600,color:"#0891B2",cursor:"pointer",textDecoration:"underline",textUnderlineOffset:2}}>
+                        Book after school club →
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -621,6 +674,43 @@
             </Modal>
           )}
 
+          {/* ── MODAL: PE Days ── */}
+          {showPE && (
+            <Modal onClose={()=>setShowPE(false)}>
+              <div style={{padding:22}}>
+                <ModalTitle onClose={()=>setShowPE(false)}>🤸 PE Days</ModalTitle>
+                <p style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.55}}>
+                  Select which days of the week Year 1 have PE. Parents will see a kit reminder on those days in the calendar. Changes take effect immediately for everyone.
+                </p>
+                <div style={{display:"flex",gap:8,marginBottom:24}}>
+                  {[["Mon",1],["Tue",2],["Wed",3],["Thu",4],["Fri",5]].map(([name,num])=>{
+                    const on = peDays.includes(num);
+                    return (
+                      <button key={num} onClick={()=>setPeDays(p=>on?p.filter(d=>d!==num):[...p,num].sort())} style={{
+                        flex:1, padding:"14px 4px", borderRadius:12, cursor:"pointer",
+                        border: on ? "2px solid #0891B2" : "2px solid #E2E8F0",
+                        background: on ? "#ECFEFF" : "#F8FAFC",
+                        color: on ? "#0891B2" : "#94A3B8",
+                        fontWeight:800, fontSize:13,
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:4,
+                      }}>
+                        <span style={{fontSize:18}}>{on?"🤸":"—"}</span>
+                        {name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{background:"#ECFEFF",border:"1px solid #A5F3FC",borderRadius:12,padding:12,marginBottom:16,fontSize:12,color:"#0E7490",lineHeight:1.55}}>
+                  Currently set to: <strong>{peDays.length===0 ? "No PE days selected" : peDays.map(d=>["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d]).join(" & ")}</strong> each week. PE reminders automatically skip INSET days.
+                </div>
+                <button onClick={()=>setShowPE(false)} style={{
+                  width:"100%",background:"#0891B2",color:"#fff",border:"none",borderRadius:12,
+                  padding:13,fontSize:14,fontWeight:700,cursor:"pointer"
+                }}>Save PE Days</button>
+              </div>
+            </Modal>
+          )}
+
           {/* ── MODAL: Add Event ── */}
           {showAdd && (
             <Modal onClose={()=>setShowAdd(false)}>
@@ -651,12 +741,183 @@
                 }}>Add Event</button>
               </div>
             </Modal>
+          {/* ── BOTTOM TAB BAR ── */}
+          <div style={{
+            position:"fixed", bottom:0, left:0, right:0, maxWidth:480, margin:"0 auto",
+            background:"#fff", borderTop:"1px solid #E2E8F0",
+            display:"flex", zIndex:50,
+            paddingBottom:"env(safe-area-inset-bottom, 0px)",
+          }}>
+            {[
+              { id:"events", icon:"📅", label:"Events" },
+              { id:"clubs",  icon:"🏃", label:"Clubs" },
+            ].map(tab => (
+              <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{
+                flex:1, padding:"10px 0 12px", background:"none", border:"none", cursor:"pointer",
+                display:"flex", flexDirection:"column", alignItems:"center", gap:3,
+                color: activeTab===tab.id ? "#1D4ED8" : "#94A3B8",
+                borderTop: activeTab===tab.id ? "2px solid #1D4ED8" : "2px solid transparent",
+              }}>
+                <span style={{fontSize:20}}>{tab.icon}</span>
+                <span style={{fontSize:11,fontWeight:700,letterSpacing:.3}}>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* ── CLUBS VIEW ── */}
+          {activeTab==="clubs" && (
+            <div style={{position:"fixed",inset:0,background:"#F0F4FF",overflowY:"auto",zIndex:40,maxWidth:480,margin:"0 auto",paddingBottom:80}}>
+
+              {/* Clubs hero */}
+              <div style={{background:"linear-gradient(160deg,#1E3A8A 0%,#1D4ED8 65%,#2563EB 100%)",color:"#fff",paddingTop:"env(safe-area-inset-top, 44px)"}}>
+                <div style={{padding:"20px 24px 28px"}}>
+                  <div style={{fontSize:11,fontWeight:700,opacity:.6,letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Progressive Sports</div>
+                  <div style={{fontSize:28,fontWeight:900,letterSpacing:-1,lineHeight:1.1,marginBottom:4}}>Breakfast &amp; After School Clubs</div>
+                  <div style={{fontSize:13,opacity:.75,marginTop:6}}>All Saints' C of E Primary · Blackheath</div>
+                </div>
+              </div>
+
+              <div style={{padding:"16px 16px 0"}}>
+
+                {/* Book now CTA */}
+                <button
+                  onClick={()=>window.open("https://enrolmy.com/progressive-sports-se-london-and-kent/activity/65-All_Saints_Primary_Autumn_Term_After_School_Club?emyatb=4w7ygdi444","_blank")}
+                  style={{
+                    width:"100%", background:"#1D4ED8", color:"#fff", border:"none",
+                    borderRadius:14, padding:"16px", fontSize:16, fontWeight:800,
+                    cursor:"pointer", marginBottom:16, letterSpacing:-.3,
+                    boxShadow:"0 4px 14px rgba(29,78,216,0.35)",
+                  }}>
+                  Book a Place on EnrolMy →
+                </button>
+
+                {/* Term at a glance */}
+                <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>📆 Autumn Term 2026</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    {[
+                      { label:"First session",  value:"Fri 4 Sep 2026" },
+                      { label:"Last session",   value:"Fri 18 Dec 2026" },
+                      { label:"Opening time",   value:"7:45am" },
+                      { label:"Closing time",   value:"6:00pm" },
+                      { label:"Year groups",    value:"Reception – Year 6" },
+                      { label:"Operated by",    value:"Progressive Sports" },
+                    ].map(({label,value}) => (
+                      <div key={label} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 12px"}}>
+                        <div style={{fontSize:10,fontWeight:700,color:"#94A3B8",textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>{label}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:"#0F172A",lineHeight:1.3}}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Pricing */}
+                <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>💷 Pricing</div>
+                  <div style={{fontSize:12,color:"#64748B",marginBottom:10,lineHeight:1.5}}>Prices vary by session length. Select your sessions on EnrolMy to see your exact cost.</div>
+                  <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    <div style={{flex:1,background:"#EFF6FF",borderRadius:10,padding:"12px",textAlign:"center"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#1D4ED8",marginBottom:4}}>FROM</div>
+                      <div style={{fontSize:24,fontWeight:900,color:"#1D4ED8"}}>£5.05</div>
+                      <div style={{fontSize:11,color:"#64748B",marginTop:2}}>per session</div>
+                    </div>
+                    <div style={{flex:1,background:"#F0FFF4",borderRadius:10,padding:"12px",textAlign:"center"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#16A34A",marginBottom:4}}>UP TO</div>
+                      <div style={{fontSize:24,fontWeight:900,color:"#16A34A"}}>£17.00</div>
+                      <div style={{fontSize:11,color:"#64748B",marginTop:2}}>per session</div>
+                    </div>
+                  </div>
+                  <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"12px",marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:800,color:"#92400E",marginBottom:4}}>🏷️ 10% Sibling Discount</div>
+                    <div style={{fontSize:12,color:"#78350F",lineHeight:1.5}}>Applies from your second child onwards when you have two or more bookings in this activity at the same time.</div>
+                  </div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#64748B",marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Accepted payments</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {["✅ Tax-Free Childcare","✅ Childcare Vouchers","✅ Childcare Grant","✅ Credit / Debit Card"].map(p=>(
+                      <span key={p} style={{background:"#F1F5F9",borderRadius:20,padding:"4px 10px",fontSize:11,fontWeight:600,color:"#334155"}}>{p}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cancellation policy */}
+                <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>⚠️ Cancellation Policy</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {[
+                      { notice:"7+ days notice",        outcome:"Full refund",        color:"#16A34A", bg:"#F0FFF4", border:"#BBF7D0" },
+                      { notice:"24 hrs – 7 days notice", outcome:"Credit on account", color:"#D97706", bg:"#FFFBEB", border:"#FDE68A" },
+                      { notice:"Under 24 hours",         outcome:"No refund or credit",color:"#DC2626", bg:"#FEF2F2", border:"#FECACA" },
+                    ].map(({notice,outcome,color,bg,border})=>(
+                      <div key={notice} style={{background:bg,border:`1px solid ${border}`,borderRadius:10,padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                        <div style={{fontSize:12,fontWeight:600,color:"#374151",flex:1}}>{notice}</div>
+                        <div style={{fontSize:12,fontWeight:800,color,flexShrink:0}}>{outcome}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:11,color:"#94A3B8",marginTop:10,lineHeight:1.5}}>
+                    Sickness absences require a valid doctor's note for a credit or transfer. Tax-Free Childcare and voucher payments cannot be refunded — credit only.
+                  </div>
+                </div>
+
+                {/* Good to know */}
+                <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>💡 Good to Know</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                    {[
+                      { icon:"⏰", title:"Late booking charge",   body:"Booking within 4 hours of a session start incurs a £2 admin fee." },
+                      { icon:"🚪", title:"No drop-ins",           body:"You must book in advance. If your child has attended before without a booking, a £5 charge applies." },
+                      { icon:"🏃", title:"What they'll do",       body:"Sports, arts & crafts, games, and a quiet space for homework. Children choose how they spend their time — no screens." },
+                      { icon:"🍳", title:"Breakfast Club",        body:"A healthy breakfast plus fun games and activities to ease children into the day from 7:45am." },
+                      { icon:"👶", title:"Minimum age",           body:"Children must be 5 or over (Reception and above). Staff are not trained in personal care or toileting." },
+                      { icon:"📸", title:"Photos & ClassDojo",    body:"Progressive Sports may photograph sessions. Agree to photo consent when booking to appear on their ClassDojo feed." },
+                    ].map(({icon,title,body})=>(
+                      <div key={title} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                        <div style={{fontSize:20,flexShrink:0,marginTop:1}}>{icon}</div>
+                        <div>
+                          <div style={{fontSize:13,fontWeight:700,color:"#0F172A",marginBottom:2}}>{title}</div>
+                          <div style={{fontSize:12,color:"#64748B",lineHeight:1.55}}>{body}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Contact */}
+                <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:14,border:"1px solid #E8EDF5"}}>
+                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>📞 Contact Progressive Sports</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>window.open("tel:01889343120","_self")} style={{
+                      flex:1,background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #DBEAFE",
+                      borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"
+                    }}>📞 01889 343120</button>
+                    <button onClick={()=>window.open("mailto:info@progressive-sports.co.uk","_self")} style={{
+                      flex:1,background:"#F0FFF4",color:"#16A34A",border:"1px solid #BBF7D0",
+                      borderRadius:10,padding:"11px",fontSize:13,fontWeight:700,cursor:"pointer"
+                    }}>✉️ Email</button>
+                  </div>
+                </div>
+
+                {/* Second book CTA */}
+                <button
+                  onClick={()=>window.open("https://enrolmy.com/progressive-sports-se-london-and-kent/activity/65-All_Saints_Primary_Autumn_Term_After_School_Club?emyatb=4w7ygdi444","_blank")}
+                  style={{
+                    width:"100%", background:"#1D4ED8", color:"#fff", border:"none",
+                    borderRadius:14, padding:"16px", fontSize:16, fontWeight:800,
+                    cursor:"pointer", marginBottom:6, letterSpacing:-.3,
+                  }}>
+                  Book a Place on EnrolMy →
+                </button>
+                <div style={{fontSize:11,color:"#94A3B8",textAlign:"center",marginBottom:16,lineHeight:1.5}}>
+                  You'll need to create an EnrolMy account and register your child on your first booking.
+                </div>
+
+              </div>
+            </div>
           )}
+
         </div>
       );
-    }
-
-    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    }(document.getElementById("root")).render(<App />);
   </script>
 </body>
 </html>
