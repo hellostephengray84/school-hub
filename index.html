@@ -269,12 +269,9 @@
         });
       }
 
+
       const weekStart  = new Date(weekDays[0] + "T12:00:00");
       const monthLabel = visibleMonth || weekStart.toLocaleDateString("en-GB", { month:"long", year:"numeric" });
-
-      const eventsOnDay = (dateStr) =>
-        events.filter(e => e.date === dateStr &&
-          (filterYear === "all" || e.yearGroups.includes(filterYear) || e.yearGroups.includes("all")));
 
       // Generate recurring PE events — skips INSET days
       const insetDates = new Set(events.filter(e => e.type==="inset").map(e => e.date));
@@ -929,7 +926,9 @@
 
         </div>
       );
-    }(document.getElementById("root")).render(<App />);
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   </script>
 </body>
 </html>
