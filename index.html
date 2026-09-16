@@ -20,11 +20,29 @@
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect } = React;
 
-    /* ── ASB crest ──────────────────────────────────────────────────────── */
-    function ASBLogo({ size = 22 }) {
-      const h = size * (60 / 48);
+    /* ── Local date helper — avoids UTC/BST off-by-one ── */
+    function localISO(d) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function toYM(dateStr) { return dateStr.slice(0,7); }
+    function formatYM(ym) {
+      const [y,m] = ym.split("-").map(Number);
+      return new Date(y, m-1, 1).toLocaleDateString("en-GB",{month:"long",year:"numeric"});
+    }
+    function formatDate(d) {
+      if (!d) return "";
+      return new Date(d+"T12:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"long",year:"numeric"});
+    }
+    function daysUntil(dateStr) {
+      const now = new Date(); now.setHours(0,0,0,0);
+      return Math.ceil((new Date(dateStr+"T00:00:00") - now) / 86400000);
+    }
+
+    /* ── ASB crest ── */
+    function ASBLogo({ size=22 }) {
+      const h = size*(60/48);
       return (
         <svg width={size} height={h} viewBox="0 0 48 60" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path fillRule="evenodd" clipRule="evenodd" d="M0 27.5332V29.6021H8.13289V27.5332H5.90033V26.5782L9.56811 20.6897H21.0498L22.4851 26.5782V27.5332H19.1362V29.6021H30.9369V27.5332H29.3422L22.4851 0H19.1362L2.5515 27.5332H0ZM17.701 6.68435L20.5714 18.4615H10.6844L17.701 6.68435Z" fill="white"/>
@@ -34,164 +52,110 @@
       );
     }
 
-    /* ── Seed events ────────────────────────────────────────────────────── */
+    /* ── Seed events ── */
+    const DATA_VERSION = "3";
     const SEED_EVENTS = [
-      { id:"f10", date:"2026-10-26", title:"Half Term Starts",       type:"term",  yearGroups:["all"], detail:"Autumn half term begins.",                                          source:"flyer" },
-      { id:"f11", date:"2026-12-18", title:"INSET Day",              type:"inset", yearGroups:["all"], detail:"Staff training day. Children do not come in.",                       source:"flyer" },
-      { id:"f12", date:"2027-01-04", title:"INSET Day",              type:"inset", yearGroups:["all"], detail:"Staff training day. Spring term begins 5th January.",               source:"flyer" },
-      { id:"f13", date:"2027-02-15", title:"Half Term Starts",       type:"term",  yearGroups:["all"], detail:"Spring half term begins.",                                          source:"flyer" },
-      { id:"f14", date:"2027-03-26", title:"INSET Day",              type:"inset", yearGroups:["all"], detail:"Staff training day. Children do not come in.",                       source:"flyer" },
-      { id:"f15", date:"2027-04-14", title:"INSET Day",              type:"inset", yearGroups:["all"], detail:"Staff training day. Summer term begins 15th April.",                source:"flyer" },
-      { id:"f16", date:"2027-05-03", title:"Bank Holiday — No School",type:"inset", yearGroups:["all"], detail:"Public Bank Holiday.",                                             source:"flyer" },
-      { id:"f17", date:"2027-05-26", title:"Half Term Starts",       type:"term",  yearGroups:["all"], detail:"Summer half term begins.",                                          source:"flyer" },
-      { id:"f18", date:"2027-07-09", title:"INSET Day",              type:"inset", yearGroups:["all"], detail:"Staff training day. Children do not come in.",                       source:"flyer" },
+      {id:"f10",date:"2026-10-26",title:"Half Term Starts",          type:"term",  yearGroups:["all"],detail:"Autumn half term begins.",                                          source:"flyer"},
+      {id:"f11",date:"2026-12-18",title:"INSET Day",                  type:"inset", yearGroups:["all"],detail:"Staff training day. Children do not come in.",                       source:"flyer"},
+      {id:"f12",date:"2027-01-04",title:"INSET Day",                  type:"inset", yearGroups:["all"],detail:"Staff training day. Spring term begins 5th January.",               source:"flyer"},
+      {id:"f13",date:"2027-02-15",title:"Half Term Starts",           type:"term",  yearGroups:["all"],detail:"Spring half term begins.",                                          source:"flyer"},
+      {id:"f14",date:"2027-03-26",title:"INSET Day",                  type:"inset", yearGroups:["all"],detail:"Staff training day. Children do not come in.",                       source:"flyer"},
+      {id:"f15",date:"2027-04-14",title:"INSET Day",                  type:"inset", yearGroups:["all"],detail:"Staff training day. Summer term begins 15th April.",                source:"flyer"},
+      {id:"f16",date:"2027-05-03",title:"Bank Holiday — No School",   type:"inset", yearGroups:["all"],detail:"Public Bank Holiday.",                                              source:"flyer"},
+      {id:"f17",date:"2027-05-26",title:"Half Term Starts",           type:"term",  yearGroups:["all"],detail:"Summer half term begins.",                                          source:"flyer"},
+      {id:"f18",date:"2027-07-09",title:"INSET Day",                  type:"inset", yearGroups:["all"],detail:"Staff training day. Children do not come in.",                       source:"flyer"},
     ];
 
-    /* ── Type metadata ──────────────────────────────────────────────────── */
+    /* ── Type meta ── */
     const TYPE_META = {
-      assembly:   { label:"Assembly",          icon:"⛪", color:"#7C3AED" },
-      trip:       { label:"School Trip",       icon:"🚌", color:"#0284C7" },
-      event:      { label:"School Event",      icon:"🏫", color:"#0EA5E9" },
-      inset:      { label:"INSET / No School", icon:"🚫", color:"#DC2626" },
-      "dress-up": { label:"Non-Uniform Day",   icon:"👕", color:"#D97706" },
-      term:       { label:"Term Date",         icon:"📅", color:"#16A34A" },
-      action:     { label:"Action / Reminder", icon:"⚠️", color:"#EA580C" },
-      social:     { label:"Social",            icon:"🎉", color:"#DB2777" },
-      homework:   { label:"Homework",          icon:"📚", color:"#6366F1" },
-      pe:         { label:"PE Day",            icon:"🤸", color:"#0891B2" },
-      custom:     { label:"Custom",            icon:"✏️", color:"#64748B" },
+      assembly:   {label:"Assembly",          icon:"⛪",color:"#7C3AED"},
+      trip:       {label:"School Trip",       icon:"🚌",color:"#0284C7"},
+      event:      {label:"School Event",      icon:"🏫",color:"#0EA5E9"},
+      inset:      {label:"INSET / No School", icon:"🚫",color:"#DC2626"},
+      "dress-up": {label:"Non-Uniform Day",   icon:"👕",color:"#D97706"},
+      term:       {label:"Term Date",         icon:"📅",color:"#16A34A"},
+      action:     {label:"Action / Reminder", icon:"⚠️",color:"#EA580C"},
+      social:     {label:"Social",            icon:"🎉",color:"#DB2777"},
+      homework:   {label:"Homework",          icon:"📚",color:"#6366F1"},
+      pe:         {label:"PE Day",            icon:"🤸",color:"#0891B2"},
+      custom:     {label:"Custom",            icon:"✏️",color:"#64748B"},
     };
-
     const YEAR_GROUP_LABELS = {
-      all:"Whole School", reception:"Reception",
-      year1:"Year 1", year2:"Year 2", year3:"Year 3",
-      year4:"Year 4", year5:"Year 5", year6:"Year 6",
-      ks1:"KS1", ks2:"KS2",
+      all:"Whole School",reception:"Reception",
+      year1:"Year 1",year2:"Year 2",year3:"Year 3",
+      year4:"Year 4",year5:"Year 5",year6:"Year 6",
+      ks1:"KS1",ks2:"KS2",
     };
 
-    /* ── Helpers ────────────────────────────────────────────────────────── */
-    function formatDate(d) {
-      if (!d) return "";
-      return new Date(d + "T12:00:00").toLocaleDateString("en-GB", {
-        weekday:"short", day:"numeric", month:"long", year:"numeric"
-      });
-    }
-    function daysUntil(dateStr) {
-      const today = new Date(); today.setHours(0,0,0,0);
-      return Math.ceil((new Date(dateStr + "T00:00:00") - today) / 86400000);
-    }
-    function toYM(dateStr) { return dateStr.slice(0, 7); }
-    function formatYM(ym) {
-      const [y, m] = ym.split("-").map(Number);
-      return new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month:"long", year:"numeric" });
-    }
+    /* ── Small components ── */
+    const inputStyle = {width:"100%",border:"1px solid #E2E8F0",borderRadius:8,padding:"10px 12px",fontSize:13,boxSizing:"border-box",background:"#F8FAFC",color:"#0F172A"};
 
-    /* ── Small components ───────────────────────────────────────────────── */
-    function Badge({ type, small }) {
-      const m = TYPE_META[type] || TYPE_META.custom;
+    function Badge({type,small}) {
+      const m = TYPE_META[type]||TYPE_META.custom;
+      return <span style={{display:"inline-flex",alignItems:"center",gap:3,background:m.color+"18",color:m.color,border:`1px solid ${m.color}33`,borderRadius:20,padding:small?"2px 7px":"3px 10px",fontSize:small?11:12,fontWeight:600,whiteSpace:"nowrap"}}><span style={{fontSize:small?9:11}}>{m.icon}</span>{m.label}</span>;
+    }
+    function YearBadge({group}) {
+      return <span style={{background:"#1D4ED810",color:"#1D4ED8",border:"1px solid #1D4ED825",borderRadius:20,padding:"2px 8px",fontSize:11,fontWeight:600}}>{YEAR_GROUP_LABELS[group]||group}</span>;
+    }
+    function DaysChip({days}) {
+      if (days<0) return <span style={{color:"#94A3B8",fontSize:11}}>Past</span>;
+      return <span style={{background:"#E2E8F0",color:"#64748B",borderRadius:12,padding:"2px 8px",fontSize:11,fontWeight:600,whiteSpace:"nowrap"}}>{days===0?"TODAY":`${days}d`}</span>;
+    }
+    function Modal({children,onClose}) {
       return (
-        <span style={{
-          display:"inline-flex", alignItems:"center", gap:3,
-          background:m.color + "18", color:m.color,
-          border:`1px solid ${m.color}33`, borderRadius:20,
-          padding:small ? "2px 7px" : "3px 10px",
-          fontSize:small ? 11 : 12, fontWeight:600, whiteSpace:"nowrap"
-        }}>
-          <span style={{fontSize:small ? 9 : 11}}>{m.icon}</span>{m.label}
-        </span>
-      );
-    }
-
-    function YearBadge({ group }) {
-      return (
-        <span style={{
-          background:"#1D4ED810", color:"#1D4ED8", border:"1px solid #1D4ED825",
-          borderRadius:20, padding:"2px 8px", fontSize:11, fontWeight:600
-        }}>{YEAR_GROUP_LABELS[group] || group}</span>
-      );
-    }
-
-    function DaysChip({ days }) {
-      if (days < 0) return <span style={{color:"#94A3B8", fontSize:11}}>Past</span>;
-      const label = days === 0 ? "TODAY" : `${days}d`;
-      return (
-        <span style={{
-          background:"#E2E8F0", color:"#64748B", borderRadius:12,
-          padding:"2px 8px", fontSize:11, fontWeight:600, whiteSpace:"nowrap"
-        }}>{label}</span>
-      );
-    }
-
-    const inputStyle = {
-      width:"100%", border:"1px solid #E2E8F0", borderRadius:8, padding:"10px 12px",
-      fontSize:13, boxSizing:"border-box", background:"#F8FAFC", color:"#0F172A"
-    };
-
-    function Modal({ children, onClose }) {
-      return (
-        <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-          style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:100,overflowY:"auto"}}>
-          <div style={{
-            background:"#fff", borderRadius:"20px 20px 0 0",
-            position:"fixed", bottom:0, left:0, right:0,
-            maxWidth:480, margin:"0 auto", maxHeight:"92vh", overflowY:"auto"
-          }}>
-            {children}
-          </div>
+        <div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:100,overflowY:"auto"}}>
+          <div style={{background:"#fff",borderRadius:"20px 20px 0 0",position:"fixed",bottom:0,left:0,right:0,maxWidth:480,margin:"0 auto",maxHeight:"92vh",overflowY:"auto"}}>{children}</div>
         </div>
       );
     }
-
-    function ModalTitle({ children, onClose }) {
-      return (
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{fontSize:17, fontWeight:800, color:"#0F172A"}}>{children}</div>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#94A3B8",padding:0,lineHeight:1}}>×</button>
-        </div>
-      );
+    function ModalTitle({children,onClose}) {
+      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontSize:17,fontWeight:800,color:"#0F172A"}}>{children}</div><button onClick={onClose} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#94A3B8",padding:0,lineHeight:1}}>×</button></div>;
     }
-
-    function Label({ children }) {
+    function Lbl({children}) {
       return <div style={{fontSize:12,fontWeight:600,color:"#64748B",marginBottom:4,marginTop:12}}>{children}</div>;
     }
-
-    function SourcePill({ source }) {
-      const map = { flyer:"📄 Flyer", whatsapp:"💬 WhatsApp", custom:"✏️ Added", pe:"🤸 PE" };
-      return <span style={{fontSize:10, color:"#94A3B8"}}>{map[source] || source}</span>;
+    function SourcePill({source}) {
+      const map={flyer:"📄 Flyer",whatsapp:"💬 WhatsApp",custom:"✏️ Added",pe:"🤸 PE"};
+      return <span style={{fontSize:10,color:"#94A3B8"}}>{map[source]||source}</span>;
     }
-
-    function InfoCard({ icon, title, body }) {
+    function InfoRow({icon,title,body}) {
       return (
-        <div style={{display:"flex", gap:12, alignItems:"flex-start"}}>
-          <div style={{fontSize:20, flexShrink:0, marginTop:1}}>{icon}</div>
-          <div>
-            <div style={{fontSize:13, fontWeight:700, color:"#0F172A", marginBottom:2}}>{title}</div>
-            <div style={{fontSize:12, color:"#64748B", lineHeight:1.55}}>{body}</div>
-          </div>
+        <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+          <div style={{fontSize:20,flexShrink:0,marginTop:1}}>{icon}</div>
+          <div><div style={{fontSize:13,fontWeight:700,color:"#0F172A",marginBottom:2}}>{title}</div><div style={{fontSize:12,color:"#64748B",lineHeight:1.55}}>{body}</div></div>
         </div>
       );
     }
 
-    /* ══════════════════════════════════════════════════════════════════════
+    /* ══════════════════════════════════════════════════════════════
        APP
-    ══════════════════════════════════════════════════════════════════════ */
+    ══════════════════════════════════════════════════════════════ */
     function App() {
-      const blue = "#1D4ED8", blueL = "#EFF6FF", blueMid = "#DBEAFE";
-      const todayStr = new Date().toISOString().split("T")[0];
+      const blue="#1D4ED8", blueL="#EFF6FF", blueMid="#DBEAFE";
 
-      /* ── Persisted state ── */
+      /* today using LOCAL date — avoids UTC/BST off-by-one */
+      const _now = new Date();
+      const todayStr = localISO(_now);
+      const todayYM  = toYM(todayStr);
+
+      /* ── Persisted events — versioned so stale localStorage is cleared ── */
       const [events, setEvents] = useState(() => {
-        try { const s = localStorage.getItem("schoolhub_events"); return s ? JSON.parse(s) : SEED_EVENTS; } catch { return SEED_EVENTS; }
+        try {
+          if (localStorage.getItem("schoolhub_version") !== DATA_VERSION) {
+            localStorage.setItem("schoolhub_version", DATA_VERSION);
+            return SEED_EVENTS;
+          }
+          const s = localStorage.getItem("schoolhub_events");
+          return s ? JSON.parse(s) : SEED_EVENTS;
+        } catch { return SEED_EVENTS; }
       });
-      useEffect(() => { try { localStorage.setItem("schoolhub_events", JSON.stringify(events)); } catch {} }, [events]);
+      useEffect(()=>{ try{localStorage.setItem("schoolhub_events",JSON.stringify(events));}catch{} },[events]);
 
-      const [apiKey, setApiKey] = useState(() => localStorage.getItem("schoolhub_apikey") || "");
-      useEffect(() => { try { localStorage.setItem("schoolhub_apikey", apiKey); } catch {} }, [apiKey]);
+      const [apiKey,  setApiKey]  = useState(()=>{ try{return localStorage.getItem("schoolhub_apikey")||"";}catch{return "";} });
+      useEffect(()=>{ try{localStorage.setItem("schoolhub_apikey",apiKey);}catch{} },[apiKey]);
 
-      const [peDays, setPeDays] = useState(() => {
-        try { const s = localStorage.getItem("schoolhub_pedays"); return s ? JSON.parse(s) : [2, 3]; } catch { return [2, 3]; }
-      });
-      useEffect(() => { try { localStorage.setItem("schoolhub_pedays", JSON.stringify(peDays)); } catch {} }, [peDays]);
+      const [peDays, setPeDays] = useState(()=>{ try{const s=localStorage.getItem("schoolhub_pedays");return s?JSON.parse(s):[2,3];}catch{return[2,3];} });
+      useEffect(()=>{ try{localStorage.setItem("schoolhub_pedays",JSON.stringify(peDays));}catch{} },[peDays]);
 
       /* ── UI state ── */
       const [filterType,    setFilterType]    = useState("all");
@@ -203,266 +167,201 @@
       const [calSuccess,    setCalSuccess]    = useState(null);
       const [activeTab,     setActiveTab]     = useState("events");
       const [calExpanded,   setCalExpanded]   = useState(false);
-      const [goodToKnowOpen,setGoodToKnowOpen]= useState(false);
+      const [viewMonth,     setViewMonth]     = useState(todayYM);
+      const [gtkOpen,       setGtkOpen]       = useState(false);
+      const [flyerFile,     setFlyerFile]     = useState(null);
+      const [flyerLoading,  setFlyerLoading]  = useState(false);
+      const [flyerResult,   setFlyerResult]   = useState(null);
+      const [newEv, setNewEv] = useState({title:"",date:"",type:"event",yearGroups:["year2"],detail:""});
 
-      /* ── Calendar month state ── */
-      const todayYM = toYM(todayStr);
-      const [viewMonth, setViewMonth] = useState(todayYM);
-
-      /* ── PE event generation (tagged "all" so visible in every year filter) ── */
-      const insetDates = new Set(events.filter(e => e.type === "inset").map(e => e.date));
-      const peEvents = (() => {
-        const out = [];
-        const d = new Date(); d.setHours(0, 0, 0, 0);
-        const end = new Date(); end.setDate(end.getDate() + 140);
-        while (d <= end) {
-          const dow = d.getDay();
-          const dateStr = d.toISOString().split("T")[0];
-          if (peDays.includes(dow) && !insetDates.has(dateStr)) {
-            out.push({ id:"pe_" + dateStr, date:dateStr, title:"PE Day — Bring kit", type:"pe",
-              yearGroups:["all"], detail:"Your child needs their PE kit today. Named kit should be in their bag before school.", source:"pe" });
+      /* ── PE events — local date, yearGroups all ── */
+      const insetDates = new Set(events.filter(e=>e.type==="inset").map(e=>e.date));
+      const peEvents = (()=>{
+        const out=[];
+        const d=new Date(); d.setHours(0,0,0,0);
+        const end=new Date(); end.setDate(end.getDate()+140);
+        while(d<=end){
+          const dow=d.getDay();
+          const ds=localISO(d);
+          if(peDays.includes(dow)&&!insetDates.has(ds)){
+            out.push({id:"pe_"+ds,date:ds,title:"PE Day — Bring kit",type:"pe",yearGroups:["all"],detail:"Your child needs their PE kit today. Named kit should be in their bag before school.",source:"pe"});
           }
-          d.setDate(d.getDate() + 1);
+          d.setDate(d.getDate()+1);
         }
         return out;
       })();
-      const allEvents = [...events, ...peEvents];
+      const allEvents=[...events,...peEvents];
 
-      /* ── Calendar grid helpers ── */
-      // Mon–Fri of the current real week
-      const currentWeekDays = (() => {
-        const today = new Date(); today.setHours(0,0,0,0);
-        const dow = today.getDay() || 7;
-        const mon = new Date(today); mon.setDate(today.getDate() - (dow - 1));
-        return Array.from({length:5}, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d.toISOString().split("T")[0]; });
+      /* ── Calendar helpers (local dates) ── */
+      const currentWeekDays=(()=>{
+        const t=new Date(); t.setHours(0,0,0,0);
+        const dow=t.getDay()||7; // Sun=7 so Mon=1
+        const mon=new Date(t); mon.setDate(t.getDate()-(dow-1));
+        return Array.from({length:5},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return localISO(d);});
       })();
 
-      // All Mon–Fri weeks that overlap the viewMonth
-      const viewMonthWeeks = (() => {
-        const [y, m] = viewMonth.split("-").map(Number);
-        const firstDay = new Date(y, m - 1, 1);
-        const lastDay  = new Date(y, m, 0);
-        const firstDow = firstDay.getDay() || 7;
-        const mon = new Date(firstDay); mon.setDate(firstDay.getDate() - (firstDow - 1));
-        const weeks = []; const cursor = new Date(mon);
-        while (cursor <= lastDay) {
-          weeks.push(Array.from({length:5}, (_, i) => {
-            const d = new Date(cursor); d.setDate(cursor.getDate() + i); return d.toISOString().split("T")[0];
-          }));
-          cursor.setDate(cursor.getDate() + 7);
+      const viewMonthWeeks=(()=>{
+        const [y,m]=viewMonth.split("-").map(Number);
+        const firstDay=new Date(y,m-1,1);
+        const lastDay=new Date(y,m,0);
+        const fdow=firstDay.getDay()||7;
+        const mon=new Date(firstDay); mon.setDate(firstDay.getDate()-(fdow-1));
+        const weeks=[]; const cur=new Date(mon);
+        while(cur<=lastDay){
+          weeks.push(Array.from({length:5},(_,i)=>{const d=new Date(cur);d.setDate(cur.getDate()+i);return localISO(d);}));
+          cur.setDate(cur.getDate()+7);
         }
         return weeks;
       })();
 
-      // Unique months that have future events (for dropdown)
-      const monthOptions = (() => {
-        const set = new Set([todayYM]);
-        allEvents.forEach(e => { if (daysUntil(e.date) >= 0) set.add(toYM(e.date)); });
+      const monthOptions=(()=>{
+        const set=new Set([todayYM]);
+        allEvents.forEach(e=>{if(daysUntil(e.date)>=0)set.add(toYM(e.date));});
         return [...set].sort();
       })();
 
-      /* ── Filtered event list ── */
-      const eventsOnDay = (dateStr) =>
-        allEvents.filter(e => e.date === dateStr &&
-          (filterYear === "all" || e.yearGroups.includes(filterYear) || e.yearGroups.includes("all")));
+      /* ── Filtering ── */
+      const eventsOnDay=ds=>allEvents.filter(e=>e.date===ds&&(filterYear==="all"||e.yearGroups.includes(filterYear)||e.yearGroups.includes("all")));
 
-      const filtered = [...allEvents]
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .filter(e => daysUntil(e.date) >= 0)
-        .filter(e => filterType === "all" || e.type === filterType)
-        .filter(e => filterYear === "all" || e.yearGroups.includes(filterYear) || e.yearGroups.includes("all"));
+      const filtered=[...allEvents]
+        .sort((a,b)=>a.date.localeCompare(b.date))
+        .filter(e=>daysUntil(e.date)>=0)
+        .filter(e=>filterType==="all"||e.type===filterType)
+        .filter(e=>filterYear==="all"||e.yearGroups.includes(filterYear)||e.yearGroups.includes("all"));
 
       /* ── Actions ── */
-      function addToCalendar(ev) {
-        const fmt = d => d.toISOString().replace(/[-:.]/g,"").slice(0,15) + "Z";
-        const start = new Date(ev.date + "T09:00:00");
-        const end   = new Date(ev.date + "T10:00:00");
-        const params = new URLSearchParams({
-          action:"TEMPLATE", text:`${ev.title} – All Saints' Blackheath`,
-          dates:`${fmt(start)}/${fmt(end)}`, details:ev.detail || "",
-          location:"All Saints' C of E Primary School, Blackheath, SE3 0TX",
-        });
-        window.open(`https://calendar.google.com/calendar/render?${params}`, "_blank");
-        setCalSuccess(ev.id);
-        setTimeout(() => setCalSuccess(null), 2500);
+      function addToCalendar(ev){
+        const fmt=d=>d.toISOString().replace(/[-:.]/g,"").slice(0,15)+"Z";
+        const s=new Date(ev.date+"T09:00:00"),en=new Date(ev.date+"T10:00:00");
+        const p=new URLSearchParams({action:"TEMPLATE",text:`${ev.title} – All Saints' Blackheath`,dates:`${fmt(s)}/${fmt(en)}`,details:ev.detail||"",location:"All Saints' C of E Primary School, Blackheath, SE3 0TX"});
+        window.open(`https://calendar.google.com/calendar/render?${p}`,"_blank");
+        setCalSuccess(ev.id); setTimeout(()=>setCalSuccess(null),2500);
       }
-
-      function addEvent() {
-        if (!newEv.title || !newEv.date) return;
-        setEvents(p => [...p, {...newEv, id:"c_" + Date.now(), source:"custom"}]);
-        setNewEv({title:"", date:"", type:"event", yearGroups:["year2"], detail:""});
+      function addEvent(){
+        if(!newEv.title||!newEv.date)return;
+        setEvents(p=>[...p,{...newEv,id:"c_"+Date.now(),source:"custom"}]);
+        setNewEv({title:"",date:"",type:"event",yearGroups:["year2"],detail:""});
         setShowAdd(false);
       }
-
-      async function parseFlyer() {
-        if (!flyerFile) return;
-        if (!apiKey.trim()) { setFlyerResult({error:"Please enter your Anthropic API key above."}); return; }
-        setFlyerLoading(true); setFlyerResult(null);
-        try {
-          const base64 = await new Promise((res, rej) => {
-            const r = new FileReader();
-            r.onload = () => res(r.result.split(",")[1]);
-            r.onerror = () => rej(new Error("Could not read file"));
-            r.readAsDataURL(flyerFile);
-          });
-          const resp = await fetch("https://api.anthropic.com/v1/messages", {
-            method:"POST",
-            headers:{ "Content-Type":"application/json", "x-api-key":apiKey,
-              "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-            body: JSON.stringify({
-              model:"claude-sonnet-4-6", max_tokens:1500,
-              messages:[{ role:"user", content:[
-                { type:"document", source:{ type:"base64", media_type:"application/pdf", data:base64 } },
-                { type:"text", text:`Extract ALL events, dates, deadlines, term dates, INSET days from this All Saints' Blackheath Friday Flyer. Return ONLY valid JSON no markdown:\n{"flyerDate":"string","summary":"string","events":[{"title":"string","date":"YYYY-MM-DD or null","type":"assembly|trip|event|inset|dress-up|term|action|social|homework","yearGroups":["all|year1|year2|year3|year4|year5|year6|reception"],"detail":"string"}]}` }
-              ]}]
-            })
-          });
-          const data = await resp.json();
-          if (data.error) throw new Error(data.error.message);
-          const text = data.content?.find(b => b.type === "text")?.text || "";
+      async function parseFlyer(){
+        if(!flyerFile)return;
+        if(!apiKey.trim()){setFlyerResult({error:"Please enter your Anthropic API key above."});return;}
+        setFlyerLoading(true);setFlyerResult(null);
+        try{
+          const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=()=>rej(new Error("Read failed"));r.readAsDataURL(flyerFile);});
+          const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1500,messages:[{role:"user",content:[{type:"document",source:{type:"base64",media_type:"application/pdf",data:b64}},{type:"text",text:`Extract ALL events, dates, INSET days, term dates from this All Saints' Blackheath Friday Flyer. Return ONLY valid JSON:\n{"flyerDate":"string","summary":"string","events":[{"title":"string","date":"YYYY-MM-DD or null","type":"assembly|trip|event|inset|dress-up|term|action|social|homework","yearGroups":["all|year1|year2|year3|year4|year5|year6|reception"],"detail":"string"}]}`}]}]})});
+          const data=await resp.json();
+          if(data.error)throw new Error(data.error.message);
+          const text=data.content?.find(b=>b.type==="text")?.text||"";
           setFlyerResult(JSON.parse(text.replace(/```json|```/g,"").trim()));
-        } catch(e) {
-          setFlyerResult({error:"Could not parse: " + (e.message || "Check your API key and try again.")});
-        }
+        }catch(e){setFlyerResult({error:"Could not parse: "+(e.message||"Check API key and try again.")});}
         setFlyerLoading(false);
       }
-
-      function importFlyer() {
-        if (!flyerResult?.events) return;
-        const newFlyerEvents = flyerResult.events.map(e => ({
-          ...e, id:"fl_" + Date.now() + Math.random(), source:"flyer"
-        }));
-        setEvents(p => [...p.filter(e => e.source !== "flyer"), ...newFlyerEvents]);
-        setShowFlyer(false); setFlyerResult(null);
+      function importFlyer(){
+        if(!flyerResult?.events)return;
+        setEvents(p=>[...p.filter(e=>e.source!=="flyer"),...flyerResult.events.map(e=>({...e,id:"fl_"+Date.now()+Math.random(),source:"flyer"}))]);
+        setShowFlyer(false);setFlyerResult(null);
       }
 
-      /* ── Local form state ── */
-      const [flyerFile,    setFlyerFile]    = useState(null);
-      const [flyerLoading, setFlyerLoading] = useState(false);
-      const [flyerResult,  setFlyerResult]  = useState(null);
-      const [newEv, setNewEv] = useState({title:"", date:"", type:"event", yearGroups:["year2"], detail:""});
-      const today = todayStr;
+      const DAY_NAMES=["MON","TUE","WED","THU","FRI"];
 
-      const DAY_NAMES = ["MON","TUE","WED","THU","FRI"];
-
-      /* ══════════════════════════════════════════════════════════════════
-         RENDER
-      ══════════════════════════════════════════════════════════════════ */
+      /* ══════════════════════ RENDER ══════════════════════ */
       return (
-        <div style={{fontFamily:"-apple-system,'Inter',sans-serif", background:"#F0F4FF", minHeight:"100vh", maxWidth:480, margin:"0 auto"}}>
+        <div style={{fontFamily:"-apple-system,'Inter',sans-serif",background:"#F0F4FF",minHeight:"100vh",maxWidth:480,margin:"0 auto"}}>
 
           {/* ── HERO ── */}
-          <div style={{background:"linear-gradient(160deg,#1E3A8A 0%,#1D4ED8 65%,#2563EB 100%)", color:"#fff", paddingTop:"env(safe-area-inset-top, 44px)"}}>
+          <div style={{background:"linear-gradient(160deg,#1E3A8A 0%,#1D4ED8 65%,#2563EB 100%)",color:"#fff",paddingTop:"env(safe-area-inset-top, 44px)"}}>
 
             {/* Header */}
-            <div style={{padding:"20px 20px 0", display:"flex", alignItems:"center", justifyContent:"space-between"}}>
-              <div style={{fontSize:34, fontWeight:900, letterSpacing:-1.2, lineHeight:1}}>School Hub</div>
-              <button onClick={()=>window.location.reload()} title="Refresh"
-                style={{background:"none", border:"none", cursor:"pointer", padding:0, opacity:.85}}>
-                <ASBLogo size={26}/>
-              </button>
+            <div style={{padding:"20px 20px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontSize:34,fontWeight:900,letterSpacing:-1.2,lineHeight:1}}>School Hub</div>
+              <button onClick={()=>window.location.reload()} style={{background:"none",border:"none",cursor:"pointer",padding:0,opacity:.85}}><ASBLogo size={26}/></button>
             </div>
 
             {/* Full-width month dropdown */}
-            <div style={{padding:"16px 20px 12px"}}>
-              <div style={{fontSize:11, fontWeight:700, opacity:.6, letterSpacing:1, textTransform:"uppercase", marginBottom:6}}>Coming up</div>
-              <div style={{position:"relative"}}>
-                <select
-                  value={viewMonth}
-                  onChange={e => { setViewMonth(e.target.value); setCalExpanded(true); }}
-                  style={{
-                    width:"100%", background:"rgba(255,255,255,0.12)", border:"1px solid rgba(255,255,255,0.25)",
-                    borderRadius:12, color:"#fff", fontSize:22, fontWeight:900, letterSpacing:-.5,
-                    padding:"10px 40px 10px 16px", appearance:"none", WebkitAppearance:"none", cursor:"pointer",
-                    backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E")`,
-                    backgroundRepeat:"no-repeat", backgroundPosition:"right 14px center",
-                  }}>
-                  {monthOptions.map(ym => (
-                    <option key={ym} value={ym} style={{color:"#0F172A", background:"#fff", fontWeight:600}}>{formatYM(ym)}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Calendar grid */}
-            <div style={{padding:"0 16px 6px"}}>
-              {/* Column headers + expand toggle */}
-              <div style={{display:"grid", gridTemplateColumns:"repeat(5,1fr) 36px", marginBottom:4}}>
-                {DAY_NAMES.map(d => (
-                  <div key={d} style={{textAlign:"center", fontSize:9, fontWeight:700, letterSpacing:.8, color:"rgba(255,255,255,0.55)", textTransform:"uppercase", paddingBottom:4}}>{d}</div>
+            <div style={{padding:"20px 16px 0"}}>
+              <div style={{fontSize:11,fontWeight:700,opacity:.6,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Coming up</div>
+              <select
+                value={viewMonth}
+                onChange={e=>{setViewMonth(e.target.value);setCalExpanded(true);}}
+                style={{
+                  width:"100%",background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.25)",
+                  borderRadius:12,color:"#fff",fontSize:22,fontWeight:900,letterSpacing:-.5,
+                  padding:"12px 40px 12px 16px",appearance:"none",WebkitAppearance:"none",cursor:"pointer",
+                  backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E")`,
+                  backgroundRepeat:"no-repeat",backgroundPosition:"right 14px center",
+                }}>
+                {monthOptions.map(ym=>(
+                  <option key={ym} value={ym} style={{color:"#0F172A",background:"#fff",fontWeight:600}}>{formatYM(ym)}</option>
                 ))}
-                <div/>
-              </div>
-
-              {/* Rows */}
-              {(calExpanded ? viewMonthWeeks : [currentWeekDays]).map((week, wi) => (
-                <div key={wi} style={{display:"grid", gridTemplateColumns:"repeat(5,1fr) 36px", marginBottom:2}}>
-                  {week.map(dateStr => {
-                    const d        = new Date(dateStr + "T12:00:00");
-                    const dayNum   = d.getDate();
-                    const isToday  = dateStr === todayStr;
-                    const inMonth  = toYM(dateStr) === viewMonth;
-                    const evs      = eventsOnDay(dateStr);
-                    const count    = evs.length;
-                    return (
-                      <div key={dateStr} onClick={()=>count>0 && setSelected(evs[0])}
-                        style={{
-                          display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
-                          padding:"8px 2px", borderRadius:10, cursor:count>0?"pointer":"default",
-                          background: isToday ? "rgba(255,255,255,0.18)" : "transparent",
-                          opacity: calExpanded && !inMonth ? 0.3 : 1,
-                          minHeight:56, position:"relative",
-                        }}>
-                        <div style={{fontSize:22, fontWeight:900, color:"#fff", lineHeight:1, opacity:isToday?1:.85}}>{dayNum}</div>
-                        <div style={{minHeight:18, marginTop:5, display:"flex", alignItems:"center", justifyContent:"center"}}>
-                          {count > 0 && (
-                            <div style={{
-                              minWidth:18, height:18, borderRadius:9, padding:"0 4px",
-                              background:"#fff", color:blue,
-                              fontSize:10, fontWeight:800,
-                              display:"flex", alignItems:"center", justifyContent:"center",
-                              boxShadow:"0 1px 4px rgba(0,0,0,0.25)"
-                            }}>{count}</div>
-                          )}
-                        </div>
-                        {isToday && (
-                          <div style={{position:"absolute", bottom:3, left:"50%", transform:"translateX(-50%)", width:16, height:2, borderRadius:2, background:"rgba(255,255,255,0.65)"}}/>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {/* Expand/collapse button on first row only */}
-                  <div style={{display:"flex", alignItems:"center", justifyContent:"center"}}>
-                    {wi === 0 && (
-                      <button onClick={()=>setCalExpanded(p=>!p)} style={{
-                        background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.25)",
-                        borderRadius:8, width:28, height:28, color:"#fff", cursor:"pointer",
-                        fontSize:14, display:"flex", alignItems:"center", justifyContent:"center"
-                      }}>{calExpanded ? "↑" : "↓"}</button>
-                    )}
-                  </div>
-                </div>
-              ))}
+              </select>
             </div>
-            <div style={{height:16}}/>
+
+            {/* Calendar card — tap anywhere to expand/collapse */}
+            <div style={{padding:"16px 16px 28px"}}>
+              <div
+                onClick={()=>setCalExpanded(p=>!p)}
+                style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:16,padding:"14px 12px",cursor:"pointer"}}>
+
+                {/* Column headers */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",marginBottom:6}}>
+                  {DAY_NAMES.map(d=>(
+                    <div key={d} style={{textAlign:"center",fontSize:9,fontWeight:700,letterSpacing:.8,color:"rgba(255,255,255,0.55)",textTransform:"uppercase"}}>{d}</div>
+                  ))}
+                </div>
+
+                {/* Week or month rows */}
+                {(calExpanded?viewMonthWeeks:[currentWeekDays]).map((week,wi)=>(
+                  <div key={wi} style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",marginBottom:2}}>
+                    {week.map(ds=>{
+                      const dayNum=new Date(ds+"T12:00:00").getDate();
+                      const isToday=ds===todayStr;
+                      const inMonth=toYM(ds)===viewMonth;
+                      const evs=eventsOnDay(ds);
+                      const count=evs.length;
+                      return (
+                        <div key={ds}
+                          onClick={e=>{if(count>0){e.stopPropagation();setSelected(evs[0]);}}}
+                          style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                            padding:"8px 2px",borderRadius:10,
+                            background:isToday?"rgba(255,255,255,0.18)":"transparent",
+                            opacity:calExpanded&&!inMonth?0.3:1,
+                            minHeight:54,position:"relative",
+                            cursor:count>0?"pointer":"default"}}>
+                          <div style={{fontSize:22,fontWeight:900,color:"#fff",lineHeight:1,opacity:isToday?1:.85}}>{dayNum}</div>
+                          <div style={{minHeight:18,marginTop:5,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {count>0&&(
+                              <div style={{minWidth:18,height:18,borderRadius:9,padding:"0 4px",background:"#fff",color:blue,fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.25)"}}>{count}</div>
+                            )}
+                          </div>
+                          {isToday&&<div style={{position:"absolute",bottom:3,left:"50%",transform:"translateX(-50%)",width:16,height:2,borderRadius:2,background:"rgba(255,255,255,0.65)"}}/>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                <div style={{textAlign:"center",marginTop:8,fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.45)",letterSpacing:.5}}>
+                  {calExpanded?"TAP TO COLLAPSE":"TAP TO SEE FULL MONTH"}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ── ACTION BAR ── */}
-          <div style={{background:"#fff", borderBottom:"1px solid #E2E8F0", padding:"10px 16px", display:"flex", gap:8}}>
+          <div style={{background:"#fff",borderBottom:"1px solid #E2E8F0",padding:"10px 16px",display:"flex",gap:8}}>
             <button onClick={()=>setShowFlyer(true)} style={{flex:1,background:blueL,color:blue,border:`1px solid ${blueMid}`,borderRadius:8,padding:"8px 4px",fontSize:12,fontWeight:600,cursor:"pointer"}}>📄 Load Flyer</button>
             <button onClick={()=>setShowPE(true)}    style={{flex:1,background:"#ECFEFF",color:"#0891B2",border:"1px solid #A5F3FC",borderRadius:8,padding:"8px 4px",fontSize:12,fontWeight:600,cursor:"pointer"}}>🤸 PE Days</button>
             <button onClick={()=>setShowAdd(true)}   style={{flex:1,background:blue,color:"#fff",border:"none",borderRadius:8,padding:"8px 4px",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Add</button>
           </div>
 
           {/* ── FILTERS ── */}
-          <div style={{padding:"10px 16px", display:"flex", gap:8}}>
-            <select value={filterType} onChange={e=>setFilterType(e.target.value)}
-              style={{flex:1,border:"1px solid #E2E8F0",borderRadius:8,padding:"7px 8px",fontSize:12,background:"#fff",color:"#374151"}}>
+          <div style={{padding:"10px 16px",display:"flex",gap:8}}>
+            <select value={filterType} onChange={e=>setFilterType(e.target.value)} style={{flex:1,border:"1px solid #E2E8F0",borderRadius:8,padding:"7px 8px",fontSize:12,background:"#fff",color:"#374151"}}>
               <option value="all">All types</option>
               {Object.entries(TYPE_META).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
             </select>
-            <select value={filterYear} onChange={e=>setFilterYear(e.target.value)}
-              style={{flex:1,border:"1px solid #E2E8F0",borderRadius:8,padding:"7px 8px",fontSize:12,background:"#fff",color:"#374151"}}>
+            <select value={filterYear} onChange={e=>setFilterYear(e.target.value)} style={{flex:1,border:"1px solid #E2E8F0",borderRadius:8,padding:"7px 8px",fontSize:12,background:"#fff",color:"#374151"}}>
               <option value="all">All year groups</option>
               {Object.entries(YEAR_GROUP_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
             </select>
@@ -470,32 +369,24 @@
 
           {/* ── EVENT LIST ── */}
           <div style={{padding:"0 16px 100px"}}>
-            {filtered.length === 0 && (
-              <div style={{textAlign:"center", padding:"48px 20px", color:"#94A3B8"}}>
-                <div style={{fontSize:36, marginBottom:8}}>📭</div>
-                <div style={{fontSize:14, fontWeight:600}}>No upcoming events</div>
-                <div style={{fontSize:12, marginTop:4}}>Load the latest Friday Flyer to populate events</div>
+            {filtered.length===0&&(
+              <div style={{textAlign:"center",padding:"48px 20px",color:"#94A3B8"}}>
+                <div style={{fontSize:36,marginBottom:8}}>📭</div>
+                <div style={{fontSize:14,fontWeight:600}}>No upcoming events</div>
+                <div style={{fontSize:12,marginTop:4}}>Load the latest Friday Flyer to add events</div>
               </div>
             )}
-            {filtered.map(ev => {
-              const days = daysUntil(ev.date);
+            {filtered.map(ev=>{
+              const days=daysUntil(ev.date);
               return (
-                <div key={ev.id} onClick={()=>setSelected(ev)} style={{
-                  background:"#fff", borderRadius:14, padding:"14px", marginBottom:10, cursor:"pointer",
-                  border:"1px solid #E8EDF5", boxShadow:"0 1px 4px rgba(0,0,0,0.05)"
-                }}>
-                  <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:5}}>
-                    <div style={{fontSize:12, color:"#64748B", fontWeight:500, flex:1, paddingRight:8}}>{formatDate(ev.date)}</div>
+                <div key={ev.id} onClick={()=>setSelected(ev)} style={{background:"#fff",borderRadius:14,padding:"14px",marginBottom:10,cursor:"pointer",border:"1px solid #E8EDF5",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5}}>
+                    <div style={{fontSize:12,color:"#64748B",fontWeight:500,flex:1,paddingRight:8}}>{formatDate(ev.date)}</div>
                     <DaysChip days={days}/>
                   </div>
-                  <div style={{fontSize:15, fontWeight:700, color:"#0F172A", marginBottom:6, lineHeight:1.3}}>{ev.title}</div>
-                  {ev.detail && (
-                    <div style={{fontSize:12,color:"#475569",marginBottom:10,lineHeight:1.55,
-                      display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
-                      {ev.detail}
-                    </div>
-                  )}
-                  <div style={{display:"flex", gap:5, flexWrap:"wrap", alignItems:"center"}}>
+                  <div style={{fontSize:15,fontWeight:700,color:"#0F172A",marginBottom:6,lineHeight:1.3}}>{ev.title}</div>
+                  {ev.detail&&<div style={{fontSize:12,color:"#475569",marginBottom:10,lineHeight:1.55,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{ev.detail}</div>}
+                  <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
                     <Badge type={ev.type} small/>
                     {ev.yearGroups?.filter(g=>g!=="all").map(g=><YearBadge key={g} group={g}/>)}
                     <SourcePill source={ev.source}/>
@@ -505,41 +396,29 @@
             })}
           </div>
 
-          {/* ── MODAL: Event Detail ── */}
-          {selected && (
+          {/* ── MODAL: Event detail ── */}
+          {selected&&(
             <Modal onClose={()=>setSelected(null)}>
               <div style={{padding:22}}>
-                <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12}}>
-                  <div style={{flex:1, paddingRight:10}}>
-                    <div style={{fontSize:13, fontWeight:600, color:"#64748B", marginBottom:4}}>{formatDate(selected.date)}</div>
-                    <div style={{fontSize:20, fontWeight:800, color:"#0F172A", lineHeight:1.2}}>
-                      {TYPE_META[selected.type]?.icon} {selected.title}
-                    </div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                  <div style={{flex:1,paddingRight:10}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#64748B",marginBottom:4}}>{formatDate(selected.date)}</div>
+                    <div style={{fontSize:20,fontWeight:800,color:"#0F172A",lineHeight:1.2}}>{TYPE_META[selected.type]?.icon} {selected.title}</div>
                   </div>
                   <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",fontSize:24,cursor:"pointer",color:"#94A3B8",padding:0,lineHeight:1}}>×</button>
                 </div>
-                <div style={{display:"flex", gap:6, flexWrap:"wrap", marginBottom:14}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
                   <Badge type={selected.type}/>
                   {selected.yearGroups?.map(g=><YearBadge key={g} group={g}/>)}
                   <SourcePill source={selected.source}/>
                 </div>
-                {selected.detail && (
-                  <div style={{background:blueL, borderRadius:12, padding:14, fontSize:14, color:"#334155", lineHeight:1.65, marginBottom:18}}>
-                    {selected.detail}
-                  </div>
-                )}
-                <div style={{display:"flex", gap:8}}>
-                  <button onClick={()=>addToCalendar(selected)} style={{
-                    flex:1, background:blue, color:"#fff", border:"none", borderRadius:12,
-                    padding:"13px", fontSize:13, fontWeight:700, cursor:"pointer"
-                  }}>
-                    {calSuccess === selected.id ? "✓ Opening Google Calendar…" : "📅 Add to Google Calendar"}
+                {selected.detail&&<div style={{background:blueL,borderRadius:12,padding:14,fontSize:14,color:"#334155",lineHeight:1.65,marginBottom:18}}>{selected.detail}</div>}
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>addToCalendar(selected)} style={{flex:1,background:blue,color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                    {calSuccess===selected.id?"✓ Opening Google Calendar…":"📅 Add to Google Calendar"}
                   </button>
-                  {selected.source === "custom" && (
-                    <button onClick={()=>{setEvents(p=>p.filter(e=>e.id!==selected.id)); setSelected(null);}} style={{
-                      background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA",
-                      borderRadius:12, padding:"13px 16px", fontSize:13, fontWeight:700, cursor:"pointer"
-                    }}>🗑️</button>
+                  {selected.source==="custom"&&(
+                    <button onClick={()=>{setEvents(p=>p.filter(e=>e.id!==selected.id));setSelected(null);}} style={{background:"#FEF2F2",color:"#DC2626",border:"1px solid #FECACA",borderRadius:12,padding:"13px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>🗑️</button>
                   )}
                 </div>
               </div>
@@ -547,39 +426,23 @@
           )}
 
           {/* ── MODAL: Load Flyer ── */}
-          {showFlyer && (
-            <Modal onClose={()=>{setShowFlyer(false); setFlyerResult(null); setFlyerFile(null);}}>
+          {showFlyer&&(
+            <Modal onClose={()=>{setShowFlyer(false);setFlyerResult(null);setFlyerFile(null);}}>
               <div style={{padding:22}}>
-                <ModalTitle onClose={()=>{setShowFlyer(false); setFlyerResult(null); setFlyerFile(null);}}>📄 Load Friday Flyer</ModalTitle>
-                <p style={{fontSize:13, color:"#64748B", marginBottom:14, lineHeight:1.55}}>
-                  Save the Friday Flyer PDF to your Files app, then select it here. Claude will extract all events and replace any from the previous flyer.
-                </p>
-                <Label>Anthropic API Key</Label>
-                <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)}
-                  placeholder="sk-ant-…" style={inputStyle}/>
-                <div style={{fontSize:11, color:"#94A3B8", marginTop:4, marginBottom:2}}>Saved in your browser only — never in the code.</div>
-                <Label>Friday Flyer PDF</Label>
-                <label style={{
-                  display:"flex", alignItems:"center", gap:10, border:"1px solid #E2E8F0",
-                  borderRadius:8, padding:"10px 12px", background:"#F8FAFC", cursor:"pointer", marginTop:4
-                }}>
+                <ModalTitle onClose={()=>{setShowFlyer(false);setFlyerResult(null);setFlyerFile(null);}}>📄 Load Friday Flyer</ModalTitle>
+                <p style={{fontSize:13,color:"#64748B",marginBottom:14,lineHeight:1.55}}>Save the Friday Flyer PDF to Files, then select it here. Claude will extract all events and replace the previous flyer's.</p>
+                <Lbl>Anthropic API Key</Lbl>
+                <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-…" style={inputStyle}/>
+                <div style={{fontSize:11,color:"#94A3B8",marginTop:4}}>Saved in your browser only — never in the code.</div>
+                <Lbl>Friday Flyer PDF</Lbl>
+                <label style={{display:"flex",alignItems:"center",gap:10,border:"1px solid #E2E8F0",borderRadius:8,padding:"10px 12px",background:"#F8FAFC",cursor:"pointer",marginTop:4}}>
                   <span style={{fontSize:20}}>📎</span>
-                  <span style={{fontSize:13, color:flyerFile?"#0F172A":"#94A3B8", flex:1}}>
-                    {flyerFile ? flyerFile.name : "Tap to choose PDF from Files…"}
-                  </span>
-                  <input type="file" accept="application/pdf" style={{display:"none"}}
-                    onChange={e=>{setFlyerFile(e.target.files[0]||null); setFlyerResult(null);}}/>
+                  <span style={{fontSize:13,color:flyerFile?"#0F172A":"#94A3B8",flex:1}}>{flyerFile?flyerFile.name:"Tap to choose PDF from Files…"}</span>
+                  <input type="file" accept="application/pdf" style={{display:"none"}} onChange={e=>{setFlyerFile(e.target.files[0]||null);setFlyerResult(null);}}/>
                 </label>
-                <button onClick={parseFlyer} disabled={flyerLoading||!flyerFile} style={{
-                  width:"100%", background:blue, color:"#fff", border:"none", borderRadius:12,
-                  padding:13, fontSize:14, fontWeight:700,
-                  cursor:(flyerLoading||!flyerFile)?"default":"pointer",
-                  opacity:(flyerLoading||!flyerFile)?0.5:1, marginTop:12, marginBottom:12
-                }}>{flyerLoading?"⏳ Extracting…":"Extract Events"}</button>
-                {flyerResult?.error && (
-                  <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:12,fontSize:13,color:"#DC2626"}}>{flyerResult.error}</div>
-                )}
-                {flyerResult?.events && (
+                <button onClick={parseFlyer} disabled={flyerLoading||!flyerFile} style={{width:"100%",background:blue,color:"#fff",border:"none",borderRadius:12,padding:13,fontSize:14,fontWeight:700,cursor:(flyerLoading||!flyerFile)?"default":"pointer",opacity:(flyerLoading||!flyerFile)?0.5:1,marginTop:12,marginBottom:12}}>{flyerLoading?"⏳ Extracting…":"Extract Events"}</button>
+                {flyerResult?.error&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:12,fontSize:13,color:"#DC2626"}}>{flyerResult.error}</div>}
+                {flyerResult?.events&&(
                   <>
                     <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>Found {flyerResult.events.length} events</div>
                     {flyerResult.summary&&<div style={{fontSize:12,color:"#64748B",marginBottom:10}}>{flyerResult.summary}</div>}
@@ -598,27 +461,17 @@
           )}
 
           {/* ── MODAL: PE Days ── */}
-          {showPE && (
+          {showPE&&(
             <Modal onClose={()=>setShowPE(false)}>
               <div style={{padding:22}}>
                 <ModalTitle onClose={()=>setShowPE(false)}>🤸 PE Days</ModalTitle>
-                <p style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.55}}>
-                  Select which days of the week have PE. Parents see a kit reminder on those days. Changes take effect immediately.
-                </p>
+                <p style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.55}}>Select which days have PE. Parents see a kit reminder on those days. Changes take effect immediately.</p>
                 <div style={{display:"flex",gap:8,marginBottom:20}}>
                   {[["Mon",1],["Tue",2],["Wed",3],["Thu",4],["Fri",5]].map(([name,num])=>{
-                    const on = peDays.includes(num);
+                    const on=peDays.includes(num);
                     return (
-                      <button key={num} onClick={()=>setPeDays(p=>on?p.filter(d=>d!==num):[...p,num].sort())} style={{
-                        flex:1, padding:"14px 4px", borderRadius:12, cursor:"pointer",
-                        border:on?"2px solid #0891B2":"2px solid #E2E8F0",
-                        background:on?"#ECFEFF":"#F8FAFC",
-                        color:on?"#0891B2":"#94A3B8",
-                        fontWeight:800, fontSize:13,
-                        display:"flex", flexDirection:"column", alignItems:"center", gap:4,
-                      }}>
-                        <span style={{fontSize:18}}>{on?"🤸":"—"}</span>
-                        {name}
+                      <button key={num} onClick={()=>setPeDays(p=>on?p.filter(d=>d!==num):[...p,num].sort())} style={{flex:1,padding:"14px 4px",borderRadius:12,cursor:"pointer",border:on?"2px solid #0891B2":"2px solid #E2E8F0",background:on?"#ECFEFF":"#F8FAFC",color:on?"#0891B2":"#94A3B8",fontWeight:800,fontSize:13,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                        <span style={{fontSize:18}}>{on?"🤸":"—"}</span>{name}
                       </button>
                     );
                   })}
@@ -632,59 +485,43 @@
           )}
 
           {/* ── MODAL: Add Event ── */}
-          {showAdd && (
+          {showAdd&&(
             <Modal onClose={()=>setShowAdd(false)}>
               <div style={{padding:22}}>
                 <ModalTitle onClose={()=>setShowAdd(false)}>✏️ Add Event</ModalTitle>
-                <Label>Event name</Label>
-                <input value={newEv.title} onChange={e=>setNewEv(p=>({...p,title:e.target.value}))}
-                  placeholder="e.g. Permission slip due" style={inputStyle}/>
-                <Label>Date</Label>
-                <input type="date" value={newEv.date} min={today}
-                  onChange={e=>setNewEv(p=>({...p,date:e.target.value}))} style={inputStyle}/>
-                <Label>Type</Label>
+                <Lbl>Event name</Lbl>
+                <input value={newEv.title} onChange={e=>setNewEv(p=>({...p,title:e.target.value}))} placeholder="e.g. Permission slip due" style={inputStyle}/>
+                <Lbl>Date</Lbl>
+                <input type="date" value={newEv.date} min={todayStr} onChange={e=>setNewEv(p=>({...p,date:e.target.value}))} style={inputStyle}/>
+                <Lbl>Type</Lbl>
                 <select value={newEv.type} onChange={e=>setNewEv(p=>({...p,type:e.target.value}))} style={inputStyle}>
                   {Object.entries(TYPE_META).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
                 </select>
-                <Label>Year group</Label>
+                <Lbl>Year group</Lbl>
                 <select value={newEv.yearGroups[0]} onChange={e=>setNewEv(p=>({...p,yearGroups:[e.target.value]}))} style={inputStyle}>
                   {Object.entries(YEAR_GROUP_LABELS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
                 </select>
-                <Label>Notes (optional)</Label>
-                <textarea value={newEv.detail} onChange={e=>setNewEv(p=>({...p,detail:e.target.value}))}
-                  placeholder="Any extra detail…" rows={3} style={{...inputStyle,resize:"vertical",fontFamily:"inherit"}}/>
-                <button onClick={addEvent} disabled={!newEv.title||!newEv.date} style={{
-                  width:"100%", background:blue, color:"#fff", border:"none", borderRadius:12,
-                  padding:13, fontSize:14, fontWeight:700, cursor:"pointer", marginTop:12,
-                  opacity:(!newEv.title||!newEv.date)?0.5:1
-                }}>Add Event</button>
+                <Lbl>Notes (optional)</Lbl>
+                <textarea value={newEv.detail} onChange={e=>setNewEv(p=>({...p,detail:e.target.value}))} placeholder="Any extra detail…" rows={3} style={{...inputStyle,resize:"vertical",fontFamily:"inherit"}}/>
+                <button onClick={addEvent} disabled={!newEv.title||!newEv.date} style={{width:"100%",background:blue,color:"#fff",border:"none",borderRadius:12,padding:13,fontSize:14,fontWeight:700,cursor:"pointer",marginTop:12,opacity:(!newEv.title||!newEv.date)?0.5:1}}>Add Event</button>
               </div>
             </Modal>
           )}
 
-          {/* ── BOTTOM TAB BAR ── */}
-          <div style={{
-            position:"fixed", bottom:0, left:0, right:0, maxWidth:480, margin:"0 auto",
-            background:"#fff", borderTop:"1px solid #E2E8F0", display:"flex", zIndex:50,
-            paddingBottom:"env(safe-area-inset-bottom, 0px)",
-          }}>
+          {/* ── BOTTOM TABS ── */}
+          <div style={{position:"fixed",bottom:0,left:0,right:0,maxWidth:480,margin:"0 auto",background:"#fff",borderTop:"1px solid #E2E8F0",display:"flex",zIndex:50,paddingBottom:"env(safe-area-inset-bottom, 0px)"}}>
             {[{id:"events",icon:"📅",label:"Events"},{id:"clubs",icon:"🏃",label:"Clubs"}].map(tab=>(
-              <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{
-                flex:1, padding:"10px 0 12px", background:"none", border:"none", cursor:"pointer",
-                display:"flex", flexDirection:"column", alignItems:"center", gap:3,
-                color:activeTab===tab.id?"#1D4ED8":"#94A3B8",
-                borderTop:activeTab===tab.id?"2px solid #1D4ED8":"2px solid transparent",
-              }}>
+              <button key={tab.id} onClick={()=>setActiveTab(tab.id)} style={{flex:1,padding:"10px 0 12px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:activeTab===tab.id?"#1D4ED8":"#94A3B8",borderTop:activeTab===tab.id?"2px solid #1D4ED8":"2px solid transparent"}}>
                 <span style={{fontSize:20}}>{tab.icon}</span>
                 <span style={{fontSize:11,fontWeight:700,letterSpacing:.3}}>{tab.label}</span>
               </button>
             ))}
           </div>
 
-          {/* ══════════════════════════════════════════════════════════════
+          {/* ══════════════════════════════════════════════════════════
               CLUBS VIEW
-          ══════════════════════════════════════════════════════════════ */}
-          {activeTab === "clubs" && (
+          ══════════════════════════════════════════════════════════ */}
+          {activeTab==="clubs"&&(
             <div style={{position:"fixed",inset:0,background:"#F0F4FF",overflowY:"auto",zIndex:40,maxWidth:480,margin:"0 auto",paddingBottom:80}}>
 
               {/* Hero */}
@@ -698,28 +535,14 @@
 
               <div style={{padding:"16px 16px 0"}}>
 
-                {/* ── Register First ── */}
-                <div style={{background:"#FFF7ED",border:"2px solid #FB923C",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#C2410C",marginBottom:6}}>⚠️ You must register before booking</div>
-                  <div style={{fontSize:12,color:"#7C2D12",lineHeight:1.6,marginBottom:10}}>
-                    Register your child with Progressive Sports before booking any session — even a one-off. Registration is free and only takes a few minutes. <strong>The school recommends all families register now</strong>, even if you don't need sessions regularly.
-                  </div>
-                  <button onClick={()=>window.open("https://enrolmy.com/progressive-sports-se-london-and-kent","_blank")}
-                    style={{width:"100%",background:"#EA580C",color:"#fff",border:"none",borderRadius:10,padding:"11px",fontSize:13,fontWeight:800,cursor:"pointer"}}>
-                    Register on EnrolMy →
-                  </button>
-                </div>
-
-                {/* ── Current day & date ── */}
-                <div style={{fontSize:12,fontWeight:600,color:"#64748B",marginBottom:10}}>
+                {/* Current day & date */}
+                <div style={{fontSize:12,fontWeight:600,color:"#64748B",marginBottom:12}}>
                   {new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
                 </div>
 
-                {/* ── Term at a glance ── */}
+                {/* Term card */}
                 <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>📆 Autumn Term 2026</div>
-
-                  {/* First / Last session */}
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
                     {[{label:"First session",value:"Fri 4 Sep 2026"},{label:"Last session",value:"Fri 18 Dec 2026"}].map(({label,value})=>(
                       <div key={label} style={{background:"#F8FAFC",borderRadius:10,padding:"10px 12px"}}>
@@ -728,17 +551,12 @@
                       </div>
                     ))}
                   </div>
-
-                  {/* Session types */}
                   {[
-                    { emoji:"🍳", name:"Breakfast Club",           time:"7:45am – 8:40am", price:"£6.50",  priceColor:"#1D4ED8", priceBg:"#EFF6FF" },
-                    { emoji:"🏃", name:"After School",             time:"3:25pm – 5:00pm", price:"£10.50", priceColor:"#16A34A", priceBg:"#F0FFF4" },
-                    { emoji:"⭐", name:"After School Extended",    time:"3:25pm – 6:00pm", price:"£17.00", priceColor:"#7C3AED", priceBg:"#F5F3FF" },
-                  ].map(({emoji,name,time,price,priceColor,priceBg})=>(
-                    <div key={name} style={{
-                      display:"flex",justifyContent:"space-between",alignItems:"center",
-                      background:"#F8FAFC",borderRadius:10,padding:"10px 12px",marginBottom:8
-                    }}>
+                    {emoji:"🍳",name:"Breakfast Club",         time:"7:45am – 8:40am",price:"£6.50", pc:"#1D4ED8",pb:"#EFF6FF"},
+                    {emoji:"🏃",name:"After School",           time:"3:25pm – 5:00pm", price:"£10.50",pc:"#16A34A",pb:"#F0FFF4"},
+                    {emoji:"⭐",name:"After School Extended",  time:"3:25pm – 6:00pm", price:"£17.00",pc:"#7C3AED",pb:"#F5F3FF"},
+                  ].map(({emoji,name,time,price,pc,pb})=>(
+                    <div key={name} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#F8FAFC",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
                       <div style={{display:"flex",gap:10,alignItems:"center"}}>
                         <span style={{fontSize:20}}>{emoji}</span>
                         <div>
@@ -746,171 +564,136 @@
                           <div style={{fontSize:11,color:"#64748B",marginTop:1}}>{time}</div>
                         </div>
                       </div>
-                      <div style={{background:priceBg,color:priceColor,borderRadius:8,padding:"4px 10px",fontSize:13,fontWeight:800,flexShrink:0}}>{price}</div>
+                      <div style={{background:pb,color:pc,borderRadius:8,padding:"4px 10px",fontSize:13,fontWeight:800,flexShrink:0}}>{price}</div>
                     </div>
                   ))}
-                  <div style={{fontSize:10,color:"#94A3B8",marginTop:4,lineHeight:1.5}}>Prices are per session. Confirm latest prices on EnrolMy before booking.</div>
+                  <div style={{fontSize:10,color:"#94A3B8",marginTop:4,lineHeight:1.5}}>Prices per session. Confirm on EnrolMy before booking.</div>
                 </div>
 
-                {/* ── Book CTA ── */}
+                {/* Book CTA */}
                 <button onClick={()=>window.open("https://enrolmy.com/progressive-sports-se-london-and-kent/activity/65-All_Saints_Primary_Autumn_Term_After_School_Club?emyatb=4w7ygdi444","_blank")}
-                  style={{
-                    width:"100%",background:"#1D4ED8",color:"#fff",border:"none",
-                    borderRadius:14,padding:"16px",fontSize:16,fontWeight:800,
-                    cursor:"pointer",marginBottom:16,letterSpacing:-.3,
-                    boxShadow:"0 4px 14px rgba(29,78,216,0.25)"
-                  }}>
+                  style={{width:"100%",background:"#1D4ED8",color:"#fff",border:"none",borderRadius:14,padding:"16px",fontSize:16,fontWeight:800,cursor:"pointer",marginBottom:16,letterSpacing:-.3,boxShadow:"0 4px 14px rgba(29,78,216,0.25)"}}>
                   Book Wrap-Around Care on EnrolMy →
                 </button>
 
-                {/* ── Booking rules ── */}
-                <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>🕰️ Booking Rules</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <div style={{background:"#EFF6FF",border:"1px solid #DBEAFE",borderRadius:10,padding:"10px 12px",display:"flex",gap:10,alignItems:"flex-start"}}>
-                      <span style={{fontSize:18,flexShrink:0}}>✅</span>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:2}}>Online booking — by 1pm same day</div>
-                        <div style={{fontSize:12,color:"#4B5563",lineHeight:1.5}}>The online system closes at 1pm for same-day bookings. Book whole term or individual sessions.</div>
-                      </div>
-                    </div>
-                    <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 12px",display:"flex",gap:10,alignItems:"flex-start"}}>
-                      <span style={{fontSize:18,flexShrink:0}}>📞</span>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700,color:"#C2410C",marginBottom:2}}>After 1pm — call head office</div>
-                        <div style={{fontSize:12,color:"#4B5563",lineHeight:1.5}}>Miss the online cut-off? Call Progressive Sports directly so they can plan numbers.</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Cancellation ── */}
-                <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>⚠️ Cancellation Policy</div>
-                  {[
-                    {notice:"7+ days notice",        outcome:"Full refund",         color:"#16A34A",bg:"#F0FFF4",border:"#BBF7D0"},
-                    {notice:"24 hrs – 7 days notice",outcome:"Credit on account",   color:"#D97706",bg:"#FFFBEB",border:"#FDE68A"},
-                    {notice:"Under 24 hours",         outcome:"No refund or credit", color:"#DC2626",bg:"#FEF2F2",border:"#FECACA"},
-                  ].map(({notice,outcome,color,bg,border})=>(
-                    <div key={notice} style={{background:bg,border:`1px solid ${border}`,borderRadius:10,padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}>
-                      <div style={{fontSize:12,fontWeight:600,color:"#374151",flex:1}}>{notice}</div>
-                      <div style={{fontSize:12,fontWeight:800,color,flexShrink:0}}>{outcome}</div>
-                    </div>
-                  ))}
-                  <div style={{fontSize:11,color:"#94A3B8",marginTop:4,lineHeight:1.5}}>Sickness absences need a doctor's note for credit. Tax-Free Childcare / voucher payments are credit-only.</div>
-                </div>
-
-                {/* ── Sibling discount ── */}
-                <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-                  <div style={{fontSize:13,fontWeight:800,color:"#92400E",marginBottom:6}}>🏷️ 10% Sibling Discount</div>
-                  <div style={{fontSize:12,color:"#78350F",lineHeight:1.5}}>Applies from your second child onwards when you have two or more bookings in this activity at the same time.</div>
-                  <div style={{marginTop:10,display:"flex",flexWrap:"wrap",gap:6}}>
-                    {["✅ Tax-Free Childcare","✅ Childcare Vouchers","✅ Childcare Grant","✅ Card"].map(p=>(
-                      <span key={p} style={{background:"#FEF3C7",borderRadius:20,padding:"3px 9px",fontSize:11,fontWeight:600,color:"#78350F"}}>{p}</span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* ── Good to Know (expandable) ── */}
-                <div style={{background:"#fff",borderRadius:14,border:"1px solid #E8EDF5",marginBottom:12,overflow:"hidden"}}>
-                  <button onClick={()=>setGoodToKnowOpen(p=>!p)} style={{
-                    width:"100%",background:"none",border:"none",cursor:"pointer",
-                    padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"
-                  }}>
-                    <div style={{fontSize:13,fontWeight:800,color:"#0F172A",textTransform:"uppercase",letterSpacing:.5}}>💡 Good to Know</div>
-                    <span style={{color:"#64748B",fontSize:18,lineHeight:1}}>{goodToKnowOpen?"▲":"▼"}</span>
-                  </button>
-                  {goodToKnowOpen && (
-                    <div style={{padding:"0 16px 16px",display:"flex",flexDirection:"column",gap:12}}>
-                      {[
-                        {icon:"⏰",title:"Late booking charge",  body:"Booking within 4 hours of a session start incurs a £2 admin fee."},
-                        {icon:"🚪",title:"No drop-ins",          body:"You must book in advance. If your child attends without a booking, a £5 charge applies."},
-                        {icon:"🏃",title:"What they'll do",      body:"Sports, arts & crafts, games, and a quiet space for homework. No screens."},
-                        {icon:"🍳",title:"Breakfast Club",       body:"Healthy breakfast plus fun activities to ease children into the day from 7:45am."},
-                        {icon:"👶",title:"Minimum age",          body:"Reception and above (age 5+). Staff are not trained in personal care or toileting."},
-                        {icon:"📸",title:"Photos & ClassDojo",   body:"Progressive Sports may photograph sessions. Agree to photo consent on EnrolMy to appear on their ClassDojo feed."},
-                      ].map(({icon,title,body})=>(
-                        <InfoCard key={title} icon={icon} title={title} body={body}/>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* ── School Clubs ── */}
+                {/* School Clubs */}
                 <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:14,textTransform:"uppercase",letterSpacing:.5}}>🏫 School Clubs — Autumn 2026</div>
-
                   {[
-                    {emoji:"🥋",name:"Kung Fu",       day:"Wednesdays",time:"3:30–5:00pm",who:"with Ricky",location:"School hall",
-                     note:"Started 23rd September 2026.",color:"#3730A3",bg:"#F5F3FF",border:"#E0E7FF",status:"ACTIVE",statusColor:"#16A34A"},
-                    {emoji:"🎨",name:"KS2 Art Club",  day:"Tuesdays",  time:"3:30–5:00pm",who:"with Luce · KS2 only",location:"Year 6 classroom",
-                     note:"Started 22nd September 2026.",color:"#9D174D",bg:"#FDF2F8",border:"#FCE7F3",status:"ACTIVE",statusColor:"#16A34A"},
-                    {emoji:"🔢",name:"KS2 Maths Club",day:"Day TBC",   time:"TBC",         who:"with Miss Sanchez · KS2 only",location:"TBC",
-                     note:"Returning after October half term.",color:"#065F46",bg:"#F0FFF4",border:"#D1FAE5",status:"AFTER HALF TERM",statusColor:"#D97706"},
-                    {emoji:"🎭",name:"Musical Theatre & Yoga",day:"TBC",time:"TBC",who:"",location:"TBC",
-                     note:"School is working to bring these back. Watch the Friday Flyer for updates.",color:"#475569",bg:"#F8FAFC",border:"#E2E8F0",status:"TBC",statusColor:"#94A3B8"},
-                  ].map(({emoji,name,day,time,who,location,note,color,bg,border,status,statusColor})=>(
-                    <div key={name} style={{borderRadius:12,border:`1px solid ${border}`,background:bg,padding:"12px 14px",marginBottom:10}}>
+                    {emoji:"🥋",name:"Kung Fu",              day:"Wednesdays",  time:"3:30–5:00pm",who:"with Ricky",  loc:"School hall",       note:"Started 23rd September 2026.",color:"#3730A3",bg:"#F5F3FF",bdr:"#E0E7FF",status:"ACTIVE",   sc:"#16A34A",wrap:true},
+                    {emoji:"🎨",name:"KS2 Art Club",         day:"Tuesdays",    time:"3:30–5:00pm",who:"with Luce · KS2 only",loc:"Year 6 classroom",note:"Started 22nd September 2026.",color:"#9D174D",bg:"#FDF2F8",bdr:"#FCE7F3",status:"ACTIVE",   sc:"#16A34A",wrap:true},
+                    {emoji:"🔢",name:"KS2 Maths Club",       day:"Day TBC",     time:"TBC",         who:"Miss Sanchez · KS2",loc:"TBC",            note:"Returning after October half term.",color:"#065F46",bg:"#F0FFF4",bdr:"#D1FAE5",status:"AFTER HALF TERM",sc:"#D97706",wrap:false},
+                    {emoji:"🎭",name:"Musical Theatre & Yoga",day:"TBC",        time:"TBC",         who:"",           loc:"TBC",                 note:"School is working to bring these back. Watch the Friday Flyer.",color:"#475569",bg:"#F8FAFC",bdr:"#E2E8F0",status:"TBC",sc:"#94A3B8",wrap:false},
+                  ].map(({emoji,name,day,time,who,loc,note,color,bg,bdr,status,sc,wrap})=>(
+                    <div key={name} style={{borderRadius:12,border:`1px solid ${bdr}`,background:bg,padding:"12px 14px",marginBottom:10}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
                         <div style={{fontSize:14,fontWeight:800,color}}>{emoji} {name}</div>
-                        <span style={{background:statusColor,color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,flexShrink:0,marginLeft:8}}>{status}</span>
+                        <span style={{background:sc,color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,flexShrink:0,marginLeft:8}}>{status}</span>
                       </div>
                       <div style={{fontSize:12,color,fontWeight:600,marginBottom:4}}>{day} · {time}</div>
-                      {who && <div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>{who} · {location}</div>}
-                      <div style={{fontSize:12,color:"#4B5563",lineHeight:1.55,marginBottom:6}}>{note}</div>
-                      {(name==="Kung Fu"||name==="KS2 Art Club") && (
-                        <div style={{fontSize:11,color:"#6366F1",background:"#EEF2FF",borderRadius:8,padding:"6px 10px",lineHeight:1.5}}>
-                          💡 Need wrap-around care until 6pm? Book the 5–6pm slot with Progressive Sports separately.
-                        </div>
-                      )}
+                      {who&&<div style={{fontSize:11,color:"#6B7280",marginBottom:4}}>{who} · {loc}</div>}
+                      <div style={{fontSize:12,color:"#4B5563",lineHeight:1.55,marginBottom:wrap?6:0}}>{note}</div>
+                      {wrap&&<div style={{fontSize:11,color:"#6366F1",background:"#EEF2FF",borderRadius:8,padding:"6px 10px",lineHeight:1.5}}>💡 Need wrap-around care until 6pm? Book the 5–6pm slot with Progressive Sports separately.</div>}
                     </div>
                   ))}
                 </div>
 
-                {/* ── Music Lessons — Front Row Music ── */}
+                {/* Music Lessons */}
                 <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:12,border:"1px solid #E8EDF5"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
                     <div style={{fontSize:13,fontWeight:800,color:"#0F172A",textTransform:"uppercase",letterSpacing:.5}}>🎵 Music Lessons</div>
                     <span style={{background:"#0891B2",color:"#fff",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>NEW</span>
                   </div>
                   <div style={{fontSize:14,fontWeight:700,color:"#0E7490",marginBottom:4}}>Front Row Music</div>
-                  <div style={{fontSize:12,color:"#64748B",marginBottom:14,lineHeight:1.55}}>
-                    Small-group music lessons during the school day, starting September 2026. Children learn to read music and develop real playing skills through a structured six-Milestone programme.
-                  </div>
-
+                  <div style={{fontSize:12,color:"#64748B",marginBottom:14,lineHeight:1.55}}>Small-group lessons during the school day. Children learn to read music and develop real playing skills through a structured six-Milestone programme.</div>
                   {[
                     {emoji:"🎸",label:"Guitar",             detail:"Years 3–6"},
                     {emoji:"🎹",label:"Ukulele & Keyboard", detail:"Years 1–6"},
                     {emoji:"⏱",label:"Session length",      detail:"30 minutes"},
                     {emoji:"👥",label:"Group size",          detail:"6–8 children"},
-                    {emoji:"🎸",label:"Instruments",         detail:"Provided for use in lessons"},
-                    {emoji:"🎤",label:"Performances",        detail:"2 per year to showcase progress"},
-                    {emoji:"💷",label:"Cost",                detail:"£36.50 per month (Sep–Jul)"},
+                    {emoji:"🎸",label:"Instruments",         detail:"Provided during lessons"},
+                    {emoji:"🎤",label:"Performances",        detail:"2 per year"},
+                    {emoji:"💷",label:"Cost",                detail:"£36.50/month (Sep–Jul)"},
                   ].map(({emoji,label,detail})=>(
                     <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingBottom:8,marginBottom:8,borderBottom:"1px solid #F1F5F9"}}>
-                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                        <span style={{fontSize:16}}>{emoji}</span>
-                        <span style={{fontSize:12,fontWeight:600,color:"#374151"}}>{label}</span>
-                      </div>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:16}}>{emoji}</span><span style={{fontSize:12,fontWeight:600,color:"#374151"}}>{label}</span></div>
                       <span style={{fontSize:12,color:"#64748B",textAlign:"right"}}>{detail}</span>
                     </div>
                   ))}
-
                   <button onClick={()=>window.open("https://www.frontrow-music.com/signup/eastlondon","_blank")}
                     style={{width:"100%",background:"#0891B2",color:"#fff",border:"none",borderRadius:12,padding:"13px",fontSize:14,fontWeight:800,cursor:"pointer",marginTop:6,marginBottom:10}}>
                     Sign Up with Front Row Music →
                   </button>
                   <div style={{display:"flex",gap:8}}>
-                    <button onClick={()=>window.open("tel:02036336188","_self")} style={{flex:1,background:"#ECFEFF",color:"#0891B2",border:"1px solid #A5F3FC",borderRadius:10,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                      📞 020 3633 6188
-                    </button>
-                    <button onClick={()=>window.open("mailto:eastlondon@frontrow-music.com","_self")} style={{flex:1,background:"#F0FFF4",color:"#16A34A",border:"1px solid #BBF7D0",borderRadius:10,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                      ✉️ Email
-                    </button>
+                    <button onClick={()=>window.open("tel:02036336188","_self")} style={{flex:1,background:"#ECFEFF",color:"#0891B2",border:"1px solid #A5F3FC",borderRadius:10,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>📞 020 3633 6188</button>
+                    <button onClick={()=>window.open("mailto:eastlondon@frontrow-music.com","_self")} style={{flex:1,background:"#F0FFF4",color:"#16A34A",border:"1px solid #BBF7D0",borderRadius:10,padding:"10px",fontSize:12,fontWeight:700,cursor:"pointer"}}>✉️ Email</button>
                   </div>
                 </div>
 
-                {/* ── Contact Progressive Sports ── */}
+                {/* Good to Know — expandable, includes booking rules + cancellation + sibling discount */}
+                <div style={{background:"#fff",borderRadius:14,border:"1px solid #E8EDF5",marginBottom:12,overflow:"hidden"}}>
+                  <button onClick={()=>setGtkOpen(p=>!p)} style={{width:"100%",background:"none",border:"none",cursor:"pointer",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div style={{fontSize:13,fontWeight:800,color:"#0F172A",textTransform:"uppercase",letterSpacing:.5}}>💡 Good to Know</div>
+                    <span style={{color:"#64748B",fontSize:18,lineHeight:1}}>{gtkOpen?"▲":"▼"}</span>
+                  </button>
+                  {gtkOpen&&(
+                    <div style={{padding:"0 16px 16px"}}>
+
+                      {/* Booking rules */}
+                      <div style={{marginBottom:14}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"#64748B",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Booking Rules</div>
+                        <div style={{background:"#EFF6FF",border:"1px solid #DBEAFE",borderRadius:10,padding:"10px 12px",display:"flex",gap:10,marginBottom:8}}>
+                          <span style={{fontSize:18,flexShrink:0}}>✅</span>
+                          <div><div style={{fontSize:12,fontWeight:700,color:"#1D4ED8",marginBottom:2}}>Online — by 1pm same day</div><div style={{fontSize:12,color:"#4B5563",lineHeight:1.5}}>The online system closes at 1pm for same-day bookings. Book the whole term or individual sessions.</div></div>
+                        </div>
+                        <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 12px",display:"flex",gap:10}}>
+                          <span style={{fontSize:18,flexShrink:0}}>📞</span>
+                          <div><div style={{fontSize:12,fontWeight:700,color:"#C2410C",marginBottom:2}}>After 1pm — call head office</div><div style={{fontSize:12,color:"#4B5563",lineHeight:1.5}}>Miss the cut-off? Call Progressive Sports so they can plan numbers.</div></div>
+                        </div>
+                      </div>
+
+                      {/* Cancellation */}
+                      <div style={{marginBottom:14}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"#64748B",textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Cancellation Policy</div>
+                        {[
+                          {notice:"7+ days notice",         outcome:"Full refund",         color:"#16A34A",bg:"#F0FFF4",bdr:"#BBF7D0"},
+                          {notice:"24 hrs – 7 days notice", outcome:"Credit on account",   color:"#D97706",bg:"#FFFBEB",bdr:"#FDE68A"},
+                          {notice:"Under 24 hours",          outcome:"No refund or credit", color:"#DC2626",bg:"#FEF2F2",bdr:"#FECACA"},
+                        ].map(({notice,outcome,color,bg,bdr})=>(
+                          <div key={notice} style={{background:bg,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6}}>
+                            <div style={{fontSize:12,fontWeight:600,color:"#374151",flex:1}}>{notice}</div>
+                            <div style={{fontSize:12,fontWeight:800,color,flexShrink:0}}>{outcome}</div>
+                          </div>
+                        ))}
+                        <div style={{fontSize:11,color:"#94A3B8",marginTop:6,lineHeight:1.5}}>Sickness needs a doctor's note for credit. Tax-Free Childcare / voucher payments are credit-only.</div>
+                      </div>
+
+                      {/* Sibling discount */}
+                      <div style={{background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:10,padding:"12px",marginBottom:14}}>
+                        <div style={{fontSize:12,fontWeight:800,color:"#92400E",marginBottom:4}}>🏷️ 10% Sibling Discount</div>
+                        <div style={{fontSize:12,color:"#78350F",lineHeight:1.5}}>Applies from your second child onwards when booking two or more sessions at the same time.</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+                          {["✅ Tax-Free Childcare","✅ Childcare Vouchers","✅ Childcare Grant","✅ Card"].map(p=>(
+                            <span key={p} style={{background:"#FEF3C7",borderRadius:20,padding:"3px 9px",fontSize:11,fontWeight:600,color:"#78350F"}}>{p}</span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* General tips */}
+                      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                        {[
+                          {icon:"⏰",title:"Late booking charge",  body:"Booking within 4 hours of a session start incurs a £2 admin fee."},
+                          {icon:"🚪",title:"No drop-ins",          body:"You must book in advance. Attending without a booking: £5 charge."},
+                          {icon:"🏃",title:"What they'll do",      body:"Sports, arts & crafts, games, and a quiet homework space. No screens."},
+                          {icon:"👶",title:"Minimum age",          body:"Reception and above (age 5+). Staff are not trained in personal care."},
+                          {icon:"📸",title:"Photos & ClassDojo",   body:"Agree to photo consent on EnrolMy to appear on the ClassDojo feed."},
+                        ].map(({icon,title,body})=><InfoRow key={title} icon={icon} title={title} body={body}/>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Contact */}
                 <div style={{background:"#fff",borderRadius:14,padding:"16px",marginBottom:16,border:"1px solid #E8EDF5"}}>
                   <div style={{fontSize:13,fontWeight:800,color:"#0F172A",marginBottom:10,textTransform:"uppercase",letterSpacing:.5}}>📞 Contact Progressive Sports</div>
                   <div style={{fontSize:12,color:"#64748B",marginBottom:10,lineHeight:1.5}}>For after-1pm same-day bookings, call head office directly.</div>
