@@ -199,7 +199,24 @@ function App() {
   /* ── Actions ── */
   function addToCalendar(ev){ const fmt=d=>d.toISOString().replace(/[-:.]/g,'').slice(0,15)+'Z'; const s=new Date(ev.date+'T09:00:00'),en=new Date(ev.date+'T10:00:00'); const p=new URLSearchParams({action:'TEMPLATE',text:`${ev.title} – All Saints' Blackheath`,dates:`${fmt(s)}/${fmt(en)}`,details:ev.detail||'',location:"All Saints' C of E Primary School, Blackheath, SE3 0TX"}); window.open(`https://calendar.google.com/calendar/render?${p}`,'_blank'); setCalSuccess(ev.id); setTimeout(()=>setCalSuccess(null),2500); }
   function addEvent(){ if(!newEv.title||!newEv.date)return; setEvents(p=>[...p,{...newEv,id:'c_'+Date.now(),source:'custom'}]); setNewEv({title:'',date:'',type:'event',yearGroups:['year2'],detail:''}); setShowAdd(false); }
-  async function parseFlyer(){ if(!flyerFile)return; if(!apiKey.trim()){setFlyerResult({error:'Please enter your Anthropic API key above.'});return;} setFlyerLoading(true);setFlyerResult(null); try{ const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=()=>rej(new Error('Read failed')); r.readAsDataURL(flyerFile); }); const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'Extract ALL events, dates, INSET days, term dates from this All Saints Blackheath Friday Flyer. Return ONLY valid JSON:\n{"flyerDate":"string","summary":"string","events":[{"title":"string","date":"YYYY-MM-DD or null","type":"assembly|trip|event|inset|dress-up|term|action|social|homework","yearGroups":["all|year1|year2|year3|year4|year5|year6|reception"],"detail":"string"}]}'}]}]})}); const data=await resp.json(); if(data.error)throw new Error(data.error.message); const text=data.content?.find(b=>b.type==='text')?.text||''; setFlyerResult(JSON.parse(text.replace(/```json|```/g,'').trim())); }catch(e){setFlyerResult({error:'Could not parse: '+(e.message||'Check API key and try again.')});} setFlyerLoading(false); }
+  async function parseFlyer(){
+    if(!flyerFile)return;
+    if(!apiKey.trim()){setFlyerResult({error:'Please enter your Anthropic API key above.'});return;}
+    setFlyerLoading(true); setFlyerResult(null);
+    try{
+      const b64=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(',')[1]); r.onerror=()=>rej(new Error('Read failed')); r.readAsDataURL(flyerFile); });
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,messages:[{role:'user',content:[{type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},{type:'text',text:'Extract ALL events, dates, INSET days, term dates from this All Saints Blackheath Friday Flyer. Return ONLY valid JSON:\n{"flyerDate":"string","summary":"string","events":[{"title":"string","date":"YYYY-MM-DD or null","type":"assembly|trip|event|inset|dress-up|term|action|social|homework","yearGroups":["all|year1|year2|year3|year4|year5|year6|reception"],"detail":"string"}]}'}]}]})});
+      const data=await resp.json();
+      if(data.error) throw new Error(data.error.message);
+      const raw=(data.content?.find(b=>b.type==='text')?.text||'').replace(/```json|```/g,'').trim();
+      let parsed=null;
+      try{ parsed=JSON.parse(raw); } catch(e1){}
+      if(!parsed){ const s=raw.indexOf('{'); const e=raw.lastIndexOf('}'); if(s>=0&&e>s){ try{ parsed=JSON.parse(raw.slice(s,e+1)); }catch(e2){} } }
+      if(!parsed) throw new Error('No valid JSON found — try again');
+      setFlyerResult(parsed);
+    }catch(e){ setFlyerResult({error:'Could not parse: '+(e.message||'Check API key and try again.')}); }
+    setFlyerLoading(false);
+  }
   function importFlyer(){ if(!flyerResult?.events)return; setEvents(p=>[...p.filter(e=>e.source!=='flyer'),...flyerResult.events.map(e=>({...e,id:'fl_'+Date.now()+Math.random(),source:'flyer'}))]); setShowFlyer(false);setFlyerResult(null); }
 
   const DAY_NAMES=['MON','TUE','WED','THU','FRI'];
